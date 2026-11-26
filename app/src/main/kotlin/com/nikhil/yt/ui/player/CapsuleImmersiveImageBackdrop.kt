@@ -452,14 +452,8 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
         val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
         val edgeColor = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
-        // Let the real surrounding hue emerge under the photo fade, not
-        // only after the controls begin. Keep ambiguous/multicolour images intact.
-        val onset = stage * 0.66f
-        val t = ((pageY - onset) / (1f - onset)).coerceIn(0f, 1f)
-        val mix = t * t * (3f - 2f * t)
-        val color = if (ground != null) lerp(edgeColor, ground, mix * 0.94f) else edgeColor
         val i = (y * PAGE_COLUMNS + x) * 3
-        raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
+        raw[i] = edgeColor.red; raw[i + 1] = edgeColor.green; raw[i + 2] = edgeColor.blue
     }
     val horizontal = FloatArray(raw.size)
     val blurred = FloatArray(raw.size)
@@ -471,12 +465,19 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val weight = backdropVerticalWeights[y * PAGE_ROWS + sy]
         for (c in 0..2) blurred[(y * PAGE_COLUMNS + x) * 3 + c] += horizontal[(sy * PAGE_COLUMNS + x) * 3 + c] * weight
     }
+    // Resolve a confidently detected solid surround AFTER spatial diffusion.
+    // Otherwise the vertical convolution pulls the foreground's blue/brown
+    // pixels back into the controls floor, creating a second horizontal band.
+    val groundChannels = ground?.let { floatArrayOf(it.red, it.green, it.blue) }
     val pixels = IntArray(PAINT_WIDTH * PAINT_HEIGHT)
     for (y in 0 until PAINT_HEIGHT) {
         val pageY = (y + 0.5f) / PAINT_HEIGHT
         // Preserve the old darkness at the top, middle and bottom, but
         // eliminate changes of slope at hard-coded horizontal boundaries.
         val scrim = 0.40f * Math.pow(pageY.toDouble(), 2.7).toFloat()
+        val groundMix = if (groundChannels != null)
+            immersiveSmootherStep(stage * 0.54f, stage * 0.98f, pageY)
+        else 0f
         for (x in 0 until PAINT_WIDTH) {
             var pixel = -0x1000000
             for (c in 0..2) {
@@ -487,7 +488,9 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
                     value += blurred[(sy * PAGE_COLUMNS + sx) * 3 + c] *
                         backdropSplineX.weights[x * 4 + dx] * backdropSplineY.weights[y * 4 + dy]
                 }
-                pixel = pixel or ((value * (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255) shl (16 - c * 8))
+                val settled = if (groundChannels != null)
+                    value + (groundChannels[c] - value) * groundMix else value
+                pixel = pixel or ((settled * (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255) shl (16 - c * 8))
             }
             pixels[y * PAINT_WIDTH + x] = pixel
         }
