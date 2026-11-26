@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -213,9 +214,7 @@ internal fun ImmersiveAudioScene(
                 modifier = Modifier.fillMaxWidth()
                     .height((artworkHeight + 1.dp) * (1f - IMMERSIVE_BLUR_STRIP_START))
                     .align(Alignment.TopCenter)
-                    .graphicsLayer {
-                        translationY = (artworkHeight + 1.dp).toPx() * IMMERSIVE_BLUR_STRIP_START
-                    },
+                    .offset(y = (artworkHeight + 1.dp) * IMMERSIVE_BLUR_STRIP_START),
             )
         }
         Box(
