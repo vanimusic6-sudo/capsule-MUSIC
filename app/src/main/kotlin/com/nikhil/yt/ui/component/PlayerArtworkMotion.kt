@@ -44,7 +44,10 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
     var root by mutableStateOf<LayoutCoordinates?>(null)
     var source by mutableStateOf<Endpoint?>(null)
     var destination by mutableStateOf<Endpoint?>(null)
-    var activeMediaId by mutableStateOf<String?>(null)
+    private var activeMediaId by mutableStateOf<String?>(null)
+    private var activePainter by mutableStateOf<Painter?>(null)
+    private var startProgress by mutableStateOf(0.005f)
+    private val clip = Path()
 
     val progress: Float get() = state.visualProgress
 
@@ -72,14 +75,24 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
     fun reconcile() {
         val p = progress
         val id = matchingId()
-        if (state.isDismissed || id == null || activeMediaId != id) activeMediaId = null
-        if (!state.isAnimationRunning && !state.compactOpenPress && (p <= 0f || p >= 1f)) {
+        fun clear() {
             activeMediaId = null
+            activePainter = null
+        }
+        if (state.isDismissed || id == null || activeMediaId != id) clear()
+        if (!state.isAnimationRunning && !state.compactOpenPress && (p <= 0f || p >= 1f)) {
+            clear()
             return
         }
         if (id != null && activeMediaId == null &&
             ((state.isExpandedOrExpanding && p <= 0.16f) ||
-                (state.isCollapsedOrCollapsing && p >= 0.86f))) activeMediaId = id
+                (state.isCollapsedOrCollapsing && p >= 0.86f))) {
+            // When preparation finishes on the first moving frame, start the
+            // shared bounds at the current dock rather than jumping ahead.
+            startProgress = if (state.isExpandedOrExpanding) p.coerceIn(0.005f, 0.16f) else 0.005f
+            activePainter = destination?.painter
+            activeMediaId = id
+        }
     }
 
     private fun bounds(endpoint: Endpoint): Rect? {
@@ -94,8 +107,8 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
     }
 
     private fun active(): Boolean =
-        activeMediaId != null && activeMediaId == matchingId() &&
-            progress > 0.005f && progress < 0.985f &&
+        activeMediaId != null && activePainter != null && activeMediaId == matchingId() &&
+            progress > startProgress && progress < 0.985f &&
             source?.let(::bounds) != null && destination?.let(::bounds) != null
 
     fun suppress(endpoint: Endpoint, mini: Boolean): Boolean =
@@ -107,26 +120,27 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         val b = destination ?: return
         val from = bounds(a) ?: return
         val to = bounds(b) ?: return
-        val painter = b.painter ?: return
+        val painter = activePainter ?: return
         val p = progress
-        val t = playerPhase(p, 0.005f, 0.82f)
+        val t = playerPhase(p, startProgress, 0.82f)
         val rect = playerArtworkBounds(from, to, t)
         val alpha = 1f - playerPhase(p, 0.82f, 0.985f)
         with(scope) {
             val radius = (a.radius.toPx() + (b.radius.toPx() - a.radius.toPx()) * t)
                 .coerceIn(0f, minOf(rect.width, rect.height) * 0.5f)
-            val path = Path().apply { addRoundRect(RoundRect(rect, CornerRadius(radius, radius))) }
+            clip.reset()
+            clip.addRoundRect(RoundRect(rect, CornerRadius(radius, radius)))
             // Same decoded painter, with a centered crop during the trip and
             // the real destination's Fit/Crop policy at the final handoff.
             val intrinsic = painter.intrinsicSize
-            val drawSize = if (intrinsic.width.isFinite() && intrinsic.height.isFinite() &&
+            val drawSize = if (intrinsic != Size.Unspecified && intrinsic.width.isFinite() && intrinsic.height.isFinite() &&
                 intrinsic.width > 0f && intrinsic.height > 0f) {
                 val crop = ContentScale.Crop.computeScaleFactor(intrinsic, rect.size)
                 val target = b.contentScale.computeScaleFactor(intrinsic, rect.size)
                 Size(intrinsic.width * (crop.scaleX + (target.scaleX - crop.scaleX) * t),
                     intrinsic.height * (crop.scaleY + (target.scaleY - crop.scaleY) * t))
             } else rect.size
-            clipPath(path) {
+            clipPath(clip) {
                 translate(rect.center.x - drawSize.width * 0.5f, rect.center.y - drawSize.height * 0.5f) {
                     with(painter) { draw(drawSize, alpha = alpha) }
                 }
