@@ -73,7 +73,7 @@ private fun window(progress: Float, start: Float, end: Float): Float =
     playerPhase(progress, start, end)
 
 /** The app stays stationary; a restrained shadow gives the arriving surface depth. */
-internal fun playerSceneDim(progress: Float): Float = 0.24f * window(progress, 0f, 0.84f)
+internal fun playerSceneDim(progress: Float): Float = 0.24f * playerSoftPhase(progress, 0f, 0.84f)
 // Backdrop is sampled by the glass Mini. Scaling Home shifts that capture.
 internal fun playerSceneScale(progress: Float): Float = 1f
 internal fun playerFrameShadowDp(progress: Float): Float {
@@ -131,18 +131,19 @@ internal fun playerMiniForegroundLayerAlpha(progress: Float): Float =
     playerLayerAlpha(playerSharedSourceAlpha(progress), playerMiniDrawAlpha(progress))
 internal fun playerMiniBadgeAlpha(progress: Float): Float =
     playerLayerAlpha(1f - playerSoftPhase(progress, 0.035f, 0.16f), playerSharedSourceAlpha(progress))
-internal fun playerSharedDestinationAlpha(progress: Float): Float = playerSoftPhase(progress, 0.94f, 0.985f)
+internal fun playerSharedDestinationAlpha(progress: Float): Float = playerSoftPhase(progress, 0.975f, 0.995f)
 // Keep the moving image behind the real artwork until the latter has acquired full opacity.
 // The parent shell already contributes the source/destination handoff alpha.
-internal fun playerSharedOverlayAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.985f, 1f)
+internal fun playerSharedOverlayAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.995f, 1f)
 internal fun playerAtomicSceneAlpha(progress: Float): Float = playerSoftPhase(progress, 0.12f, 0.68f)
 internal fun playerContentOpacity(progress: Float): Float = playerSoftPhase(progress, 0.28f, 0.74f)
 // Shared artwork is allowed to pass across the destination title/transport area.
 // Keep that foreground out of its path until the cover is almost at its slot.
 internal fun playerSharedForegroundOpacity(progress: Float): Float = playerSoftPhase(progress, 0.60f, 0.92f)
 internal fun playerArtworkTravel(progress: Float, start: Float): Float {
-    // No extra acceleration before the aperture has room for the photo.
-    return playerPhase(progress, start, 0.98f)
+    // Sample the actual aperture progress, including the compact handoff.
+    // The cover must never start its long travel while the shell is still docked.
+    return playerPhase(playerFrameGeometryProgress(progress), playerFrameGeometryProgress(start), 0.98f)
 }
 internal fun playerAtomicContentY(frameTop: Float): Float = if (frameTop.isFinite()) frameTop.coerceAtLeast(0f) else 0f
 
