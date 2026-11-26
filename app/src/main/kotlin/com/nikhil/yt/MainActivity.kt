@@ -226,7 +226,6 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
-import com.nikhil.yt.ui.component.playerNavigationTuck
 import com.nikhil.yt.ui.component.playerSceneShouldInterceptTouch
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
@@ -909,15 +908,6 @@ class MainActivity : ComponentActivity() {
                             // A single dedicated player window owns the container transform.
                             classicPlayerPresentation = false,
                         )
-
-                    // No second clock: navigation departs in the early phase of the
-                    // same player progress and returns in its exact reverse order.
-                    val playerNavTuck by remember(playerBottomSheetState) {
-                        derivedStateOf {
-                            if (playerBottomSheetState.isDismissed) 0f
-                            else playerNavigationTuck(playerBottomSheetState.visualProgress)
-                        }
-                    }
 
                     val playerBackAction = remember { PlayerBackAction() }
                     val playerOwnsBack by remember(playerBottomSheetState) {
@@ -1761,8 +1751,7 @@ class MainActivity : ComponentActivity() {
                                             else -> miniPlayerGlassBackdrop
                                         },
                                 )
-                                // Same real nav (not a duplicate): physical sibling drawn above the
-                                // expanded player during departure/return, independently tucked away.
+                                // The real navigation stays below the opaque player sheet.
                                 // Scaffold retains only a height spacer so page geometry is unchanged.
                                 if (!useRail) {
                                     val navSlideDistance =
@@ -1772,18 +1761,10 @@ class MainActivity : ComponentActivity() {
                                             Modifier
                                                 .align(Alignment.BottomCenter)
                                                 .height(navSlideDistance)
-                                                // A sibling ABOVE the physical player, but tuck BEFORE its
-                                                // artwork arrives. Never draw under the sheet.
-                                                // Move/scale one small nav layer on GPU;
-                                                // no fullscreen blur, snapshot or clock.
-                                                .zIndex(3f)
+                                                // Above the dock at rest, below the opaque player.
+                                                .zIndex(1f)
                                                 .graphicsLayer {
-                                                    val hidden = CapsuleMotion.either(
-                                                        playerNavTuck,
-                                                        1f - navigationBarReveal,
-                                                    )
-                                                    translationY = navSlideDistance.toPx() * hidden
-                                                    // Navigation keeps its native shape and follows scene opacity.
+                                                    translationY = navSlideDistance.toPx() * (1f - navigationBarReveal)
                                                 },
                                     ) {
                                         if (pureBlack) Color.Black
