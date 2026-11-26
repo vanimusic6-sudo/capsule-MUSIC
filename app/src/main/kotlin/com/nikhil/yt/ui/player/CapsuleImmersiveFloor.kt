@@ -54,6 +54,8 @@ internal data class ImmersiveArtworkTone(
     // Compatibility field; full-resolution artwork lives in Coil's shared cache.
     // Never retain a second 960px bitmap or draw a low-resolution placeholder.
     val preview: ImageBitmap? = null,
+    // Small, genuinely blurred copy of the same visible crop; never used as a placeholder.
+    val photoBlur: ImageBitmap? = null,
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
     val nearWhiteBackground: Boolean = false,
@@ -113,7 +115,7 @@ internal fun rememberImmersiveEdgeColor(
     val sourceUrl = pinnedSource ?: mediaMetadata?.thumbnailUrl?.takeIf(String::isNotBlank)
     // A different viewport shows a different centre-cropped area of the same frame.
     val artworkAspect = visibleArtworkAspectRatio.coerceIn(0.55f, 2.2f)
-    val key = mediaMetadata?.id?.let { "visible-field-v2|$it|$sourceUrl|${(artworkAspect * 100f).toInt()}" }
+    val key = mediaMetadata?.id?.let { "visible-field-v3|$it|$sourceUrl|${(artworkAspect * 100f).toInt()}" }
     var resolved by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
     var resolvedKey by remember { mutableStateOf<String?>(null) }
     val cached = key?.let { synchronized(immersiveArtworkCache) { immersiveArtworkCache[it] } }
@@ -188,6 +190,7 @@ internal fun rememberImmersiveEdgeColor(
                     // No image copy and no lower-resolution stage. The visible
                     // painter will reuse this same 960px Coil request/cache entry.
                     preview = null,
+                    photoBlur = image.capsuleImmersivePhotoBlur(artworkAspect, landscape),
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,
