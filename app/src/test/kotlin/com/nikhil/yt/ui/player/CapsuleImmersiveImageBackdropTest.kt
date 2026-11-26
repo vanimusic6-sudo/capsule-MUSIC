@@ -235,6 +235,43 @@ class CapsuleImmersiveImageBackdropTest {
         assertTrue(title.red < 0.5f && title.green < 0.5f && title.blue < 0.5f)
     }
 
+    @Test fun largeCentralSubjectDoesNotOverrideTheSurroundingRedBackground() {
+        val image = photo().apply {
+            eraseColor(0xFFDF262D.toInt())
+            Canvas(this).drawRect(27f, 65f, 293f, 292f,
+                Paint().apply { color = 0xFF1635A6.toInt() })
+        }
+        val field = image.capsuleImmersiveVisibleField(1f, false)
+        val ground = requireNotNull(capsuleImmersiveDominantGround(field))
+        assertTrue(ground.red > ground.blue + 0.40f)
+        val background = capsuleImmersiveImageBackdropBitmap(field, 0.60f).asAndroidBitmap()
+        val bottom = androidx.compose.ui.graphics.Color(background.getPixel(96, 295))
+        assertTrue(bottom.red > bottom.blue + 0.25f)
+    }
+
+    @Test fun realPhotoBlurReducesFineDetailAndIsNotAReflection() {
+        val artwork = photo().apply {
+            val canvas = Canvas(this)
+            for (x in 0 until width step 8) {
+                canvas.drawRect(x.toFloat(), 0f, (x + 4).toFloat(), height.toFloat(),
+                    Paint().apply { color = -1 })
+            }
+        }
+        val blurred = artwork.capsuleImmersivePhotoBlur(1f, false).asAndroidBitmap()
+        assertEquals(192, blurred.width)
+        assertEquals(192, blurred.height)
+        fun variation(y: Int): Int {
+            val values = (20 until 172).map { x -> blurred.getPixel(x, y) ushr 16 and 255 }
+            return values.maxOrNull()!! - values.minOrNull()!!
+        }
+        assertTrue(variation(160) <= variation(45))
+        assertTrue(variation(160) < 30)
+        assertEquals(0f, immersiveBlurredPhotoAlpha(0f), 0f)
+        assertTrue(immersiveBlurredPhotoAlpha(0.60f) > 0.95f)
+        assertEquals(0f, immersiveBlurredPhotoAlpha(1f), 0f)
+        assertEquals(0f, immersiveBlurredPhotoAlpha(Float.NaN), 0f)
+    }
+
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()
