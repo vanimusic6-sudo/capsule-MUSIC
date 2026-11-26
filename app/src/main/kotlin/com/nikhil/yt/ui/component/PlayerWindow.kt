@@ -119,15 +119,6 @@ internal fun PlayerWindow(
         Box(
             modifier.fillMaxSize().clipToBounds()
                 .onGloballyPositioned { artwork.root = it }
-                .drawWithContent {
-                    drawContent()
-                    val p = state.visualProgress
-                    if (p > 0f && p < 1f) {
-                        val frame = playerPresentationBounds(p, size.width, size.height,
-                            size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
-                        artwork.draw(this, frame, playerPageContour(p, miniRadius.toPx(), density).radius)
-                    }
-                }
                 .then(if (intercept) Modifier.pointerInput(state, leftInset, rightInset, miniHeight) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -177,6 +168,14 @@ internal fun PlayerWindow(
                                         if (state.visualProgress < 1f && bridge != null) drawRect(bridge)
                                         else drawRect(backgroundColor)
                                         drawContent()
+                                        // The moving cover belongs to the material layer,
+                                        // not a topmost overlay over the entire player UI.
+                                        val p = state.visualProgress
+                                        if (p > 0f && p < 1f) {
+                                            val frame = playerPresentationBounds(p, size.width, size.height,
+                                                size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
+                                            artwork.draw(this, frame, playerPageContour(p, miniRadius.toPx(), density).radius)
+                                        }
                                     }
                                 }
                                     .then(if (intercept) Modifier.pointerInput(state) {
