@@ -135,7 +135,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
 
     fun endpointOpacity(endpoint: Endpoint, mini: Boolean): Float =
         if (!active()) 1f
-        else if (mini && source === endpoint) playerSharedSourceAlpha(progress)
+        else if (mini && source === endpoint) playerMiniForegroundLayerAlpha(progress)
         else if (!mini && destination === endpoint) playerSharedDestinationAlpha(progress)
         else 1f
 
@@ -149,7 +149,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         val painter = activePainter ?: return
         val p = progress
         val alpha = playerSharedOverlayAlpha(p)
-        if (alpha <= 0f) return
+        if (alpha <= 0f || playerPresentationOpacity(p) <= 0f) return
         val t = playerArtworkTravel(p, 0.07f)
         val rect = playerContainedArtworkBounds(from, to, t, frame)
         if (rect.width <= 0f || rect.height <= 0f) return
