@@ -105,7 +105,6 @@ import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
-import com.nikhil.yt.ui.component.playerContentOpacity
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
@@ -742,8 +741,7 @@ fun BottomSheetPlayer(
                     // BottomSheet owns the one transition alpha for every player design.
                     // Immersive keeps this hook for its internal layout, but a second fade here
                     // would square the opacity and desynchronise it from Light.
-                    transitionForegroundAlpha = { if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE)
-                        playerContentOpacity(state.visualProgress) else 1f },
+                    transitionForegroundAlpha = { 1f },
                     onShowMenu = {
                         menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
                             PlayerMenu(
