@@ -51,12 +51,15 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.nikhil.yt.ui.component.playerArtworkEndpoint
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -832,6 +835,7 @@ private fun CapsuleMiniPlayButton(
     interactionEnabled: Boolean = true,
 ) {
     val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
+    var decodedMini by remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) { mutableStateOf<Painter?>(null) }
 
     Box(
         contentAlignment =
@@ -882,6 +886,8 @@ private fun CapsuleMiniPlayButton(
                 model =
                     mediaMetadata
                         ?.thumbnailUrl,
+                onSuccess = { decodedMini = it.painter },
+                onError = { decodedMini = null },
                 contentDescription =
                     null,
                 contentScale =
@@ -889,7 +895,9 @@ private fun CapsuleMiniPlayButton(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .playerArtworkEndpoint(mediaMetadata?.id, decodedMini, mini = true,
+                            radius = if (standardStyle) 20.dp else 22.dp),
             )
 
             if (
