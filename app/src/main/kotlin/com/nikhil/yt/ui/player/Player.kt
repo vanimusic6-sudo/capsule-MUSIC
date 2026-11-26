@@ -105,7 +105,6 @@ import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
-import com.nikhil.yt.ui.component.playerPresentationOpacity
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
@@ -614,8 +613,8 @@ fun BottomSheetPlayer(
                 pureBlack = pureBlack,
                 visible = miniVisible,
                 glassBackdrop = miniPlayerBackdrop,
-                // BottomSheet fades compact artwork + controls as one UI tree.
-                foregroundAlpha = { 1f - playerPresentationOpacity(state.visualProgress) },
+                // The incoming opaque sheet covers the dock; never fade its contents separately.
+                foregroundAlpha = { 1f },
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },
