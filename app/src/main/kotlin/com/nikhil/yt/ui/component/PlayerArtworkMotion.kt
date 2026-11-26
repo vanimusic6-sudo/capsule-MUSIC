@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
@@ -48,6 +49,8 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
     private var activePainter by mutableStateOf<Painter?>(null)
     private var startProgress by mutableStateOf(0.005f)
     private val clip = Path()
+    private val frameClip = Path()
+    var compactMaterial by mutableStateOf<Pair<Color, Color>?>(null)
 
     val progress: Float get() = state.visualProgress
 
@@ -60,7 +63,10 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         if (!mini && destination === endpoint) destination = null
     }
 
+    var sharedArtworkEnabled by mutableStateOf(true)
+
     fun matchingId(): String? {
+        if (!sharedArtworkEnabled) return null
         val a = source ?: return null
         val b = destination ?: return null
         val id = a.mediaId ?: return null
@@ -85,11 +91,11 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
             return
         }
         if (id != null && activeMediaId == null &&
-            ((state.isExpandedOrExpanding && p <= 0.16f) ||
-                (state.isCollapsedOrCollapsing && p >= 0.86f))) {
+            ((state.isExpandedOrExpanding && p <= 0.10f) ||
+                (state.isCollapsedOrCollapsing && p >= 0.92f))) {
             // When preparation finishes on the first moving frame, start the
             // shared bounds at the current dock rather than jumping ahead.
-            startProgress = if (state.isExpandedOrExpanding) p.coerceIn(0.005f, 0.16f) else 0.005f
+            startProgress = if (state.isExpandedOrExpanding) p.coerceIn(0.005f, 0.10f) else 0.005f
             activePainter = destination?.painter
             activeMediaId = id
         }
@@ -108,13 +114,13 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
 
     private fun active(): Boolean =
         activeMediaId != null && activePainter != null && activeMediaId == matchingId() &&
-            progress > startProgress && progress < 0.985f &&
+            progress > startProgress && progress < 0.995f &&
             source?.let(::bounds) != null && destination?.let(::bounds) != null
 
     fun suppress(endpoint: Endpoint, mini: Boolean): Boolean =
-        active() && (if (mini) source === endpoint else destination === endpoint && progress < 0.82f)
+        active() && (if (mini) source === endpoint else destination === endpoint)
 
-    fun draw(scope: DrawScope) {
+    fun draw(scope: DrawScope, frame: Rect, frameRadius: Float) {
         if (!active()) return
         val a = source ?: return
         val b = destination ?: return
@@ -122,9 +128,8 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         val to = bounds(b) ?: return
         val painter = activePainter ?: return
         val p = progress
-        val t = playerPhase(p, startProgress, 0.82f)
+        val t = playerPhase(p, startProgress, 1f)
         val rect = playerArtworkBounds(from, to, t)
-        val alpha = 1f - playerPhase(p, 0.82f, 0.985f)
         with(scope) {
             val radius = (a.radius.toPx() + (b.radius.toPx() - a.radius.toPx()) * t)
                 .coerceIn(0f, minOf(rect.width, rect.height) * 0.5f)
@@ -140,9 +145,15 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
                 Size(intrinsic.width * (crop.scaleX + (target.scaleX - crop.scaleX) * t),
                     intrinsic.height * (crop.scaleY + (target.scaleY - crop.scaleY) * t))
             } else rect.size
-            clipPath(clip) {
-                translate(rect.center.x - drawSize.width * 0.5f, rect.center.y - drawSize.height * 0.5f) {
-                    with(painter) { draw(drawSize, alpha = alpha) }
+            // The shared cover cannot fly ahead of its container. Both masks
+            // use the same progress, so neither background nor photo overlaps Home.
+            frameClip.reset()
+            frameClip.addRoundRect(RoundRect(frame, CornerRadius(frameRadius, frameRadius)))
+            clipPath(frameClip) {
+                clipPath(clip) {
+                    translate(rect.center.x - drawSize.width * 0.5f, rect.center.y - drawSize.height * 0.5f) {
+                        with(painter) { draw(drawSize) }
+                    }
                 }
             }
         }
