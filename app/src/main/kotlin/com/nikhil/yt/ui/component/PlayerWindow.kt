@@ -99,7 +99,7 @@ internal fun PlayerWindow(
     LaunchedEffect(artwork, state) {
         snapshotFlow {
             val p = state.visualProgress
-            val phase = when { p <= 0f -> 0; p <= 0.10f -> 1; p < 0.92f -> 2; p < 1f -> 3; else -> 4 }
+            val phase = when { p <= 0f -> 0; p <= 0.07f -> 1; p < 0.985f -> 2; p < 1f -> 3; else -> 4 }
             listOf(artwork.matchingId(), phase, state.isAnimationRunning,
                 state.isExpandedOrExpanding, state.compactOpenPress, state.isDismissed)
         }.collect { artwork.reconcile() }
@@ -110,7 +110,10 @@ internal fun PlayerWindow(
     CompositionLocalProvider(LocalPlayerArtworkMotion provides artwork) {
         Box(
             modifier.fillMaxSize().clipToBounds()
-                .onGloballyPositioned { artwork.root = it }
+                .onGloballyPositioned {
+                    artwork.root = it
+                    artwork.recordDockGeometry()
+                }
                 .then(if (intercept) Modifier.pointerInput(state, leftInset, rightInset, miniHeight) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
