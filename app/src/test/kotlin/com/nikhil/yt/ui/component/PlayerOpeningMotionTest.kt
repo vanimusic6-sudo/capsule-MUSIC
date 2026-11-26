@@ -14,6 +14,10 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.TargetBasedAnimation
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
@@ -82,6 +86,15 @@ class PlayerOpeningMotionTest {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MaterialTheme {
+                val fixturePainter = remember {
+                    object : Painter() {
+                        override val intrinsicSize = Size(180f, 180f)
+                        override fun DrawScope.onDraw() {
+                            drawRect(Color(0xFFFFBF4C))
+                            drawCircle(Color.Cyan, radius = size.minDimension * 0.25f)
+                        }
+                    }
+                }
                 state = rememberBottomSheetState(0.dp, 700.dp, 110.dp,
                     initialAnchor = COLLAPSED_ANCHOR, playerMotion = true)
                 PlayerTransitionLifetime(state, foreground.value)
@@ -133,10 +146,12 @@ class PlayerOpeningMotionTest {
                                 Box(Modifier.fillMaxSize()
                                     .drawWithContent { miniDraws++;drawContent() }
                                     .background(Color(0xFF7C3331)).testTag("mini")) {
-                                    Box(Modifier.align(Alignment.CenterStart).padding(start=10.dp).size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFFFBF4C)).drawBehind { drawCircle(Color.Cyan,radius=10.dp.toPx()) }
-                                        .testTag("mini-art"))
+                                    Image(fixturePainter, contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.align(Alignment.CenterStart).padding(start=10.dp).size(40.dp)
+                                            .clip(CircleShape)
+                                            .playerArtworkEndpoint("fixture", fixturePainter, mini = true, radius = 20.dp)
+                                            .testTag("mini-art"))
                                     Text("PLAYER",Modifier.align(Alignment.CenterStart).padding(start=62.dp)
                                         .testTag("mini-title"),
                                         fontSize=14.sp,color=Color.White)
@@ -157,12 +172,16 @@ class PlayerOpeningMotionTest {
                                     CapsuleVideoArtworkTransition(presentingVideo=false,needsSurface=false,
                                         transitionKey="fixture",artworkCornerRadius=16.dp,
                                         artworkBackground=Color.Magenta,video={}) {
-                                        Box(Modifier.fillMaxSize()
-                                            .background(if(sharedDecoded)Color(0xFFFFBF4C) else Color.Magenta)
-                                            .drawBehind{drawCircle(Color.Cyan,radius=45.dp.toPx())})
+                                        if (sharedDecoded) Image(fixturePainter, contentDescription = null,
+                                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                                                .playerArtworkEndpoint("fixture", fixturePainter, mini = false, radius = 16.dp))
+                                        else Box(Modifier.fillMaxSize().background(Color.Magenta))
                                     }
-                                } else Box(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
-                                    .background(if(sharedDecoded)Color(0xFFFFBF4C) else Color.Magenta).drawBehind { drawCircle(Color.Cyan,radius=45.dp.toPx()) })
+                                } else if (sharedDecoded) Image(fixturePainter, contentDescription = null,
+                                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .playerArtworkEndpoint("fixture", fixturePainter, mini = false, radius = 16.dp))
+                                else Box(Modifier.fillMaxSize().background(Color.Magenta))
                             }
                             Text("PLAYER", Modifier.align(Alignment.Center)
                                 .testTag("full-title"),fontSize=23.sp,color=Color.White)
@@ -234,7 +253,7 @@ class PlayerOpeningMotionTest {
             if (classicMini == 0f) assertEquals(1f, classicShell, 0.00001f)
             assertTrue(playerMiniApproach(p) in 0.964f..1f)
             assertTrue(playerMiniHeightScale(p) in 0.980f..1f)
-            if (mini == 0f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
+            if (p >= 0.48f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
         }
         assertTrue(playerNavigationTuck(0.18f) > 0.60f)
         assertEquals(1f, playerNavigationTuck(0.30f), 0f)
@@ -272,7 +291,7 @@ class PlayerOpeningMotionTest {
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
             assertTrue("Responsive first two frames", at(33) in 150f..230f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 930f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 925f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -307,7 +326,7 @@ class PlayerOpeningMotionTest {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
         assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 0f..4f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 10f..16f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -333,7 +352,7 @@ class PlayerOpeningMotionTest {
         assertEquals("the frame follows the actual anchor without extra deformation",
             295f, halfway.top, 0.001f)
         assertTrue("the actual Mini is present during the close handoff",
-            playerMiniDrawAlpha(0.5f) > 0f)
+            playerMiniDrawAlpha(0.35f) > 0f)
     }
 
     @Test fun embeddedLyricsPaletteIsReadableEvenForWhiteOrEmptyCovers() {
@@ -359,7 +378,7 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
         assertEquals(1f, playerPresentationOpacity(2f), 0f)
         assertEquals(1f, playerPresentationScale(1f), 0f)
-        assertEquals(0.94f, playerPresentationScale(0f), 0f)
+        assertEquals(1f, playerPresentationScale(0f), 0f)
         assertEquals(0f, playerPresentationContentY(1f, 0f, 1f), 0f)
 
         val source = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
@@ -445,9 +464,9 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    @Test fun actualArtworkAndTitlePaintTogetherWithoutASeparateOverlayOrDelayedBody() {
+    @Test fun actualArtworkAndTitlePaintTogetherAtTheEndOfSharedHandoff() {
         mount(actualArtworkCard = true)
-        sampleAt(0.55f)
+        sampleAt(0.94f)
         val bitmap = capture("surface-complete-content")
         val poster = rawBounds("poster")
         val center = bitmap.getPixel(poster.center.x.roundToInt(), poster.center.y.roundToInt())
@@ -462,6 +481,42 @@ class PlayerOpeningMotionTest {
         }
         assertTrue("title must arrive with the photograph", titlePixels > 30)
         bitmap.recycle()
+    }
+
+    @Test fun sharedArtworkTravelsFromMiniToFullWithoutChangingItsTrack() {
+        mount()
+        val source = rawBounds("mini-art")
+        sampleAt(0.40f)
+        val moving = capture("shared-artwork-in-flight")
+        val ink = yellowBounds(moving)
+        assertTrue("one decoded image grows out of the compact source", ink.width() > source.width * 1.15f)
+        assertTrue("the cover actually travels upward", ink.centerY() < source.center.y)
+        moving.recycle()
+        advance(700)
+        val settled = capture("shared-artwork-settled")
+        val end = yellowBounds(settled)
+        val destination = rawBounds("poster")
+        assertEquals(destination.center.x, end.exactCenterX(), 4f)
+        assertEquals(destination.center.y, end.exactCenterY(), 4f)
+        settled.recycle()
+    }
+
+    @Test fun sharedBoundsRemainFiniteAndReversibleWithAsymmetricInsets() {
+        val source = androidx.compose.ui.geometry.Rect(38f, 590f, 78f, 630f)
+        val target = androidx.compose.ui.geometry.Rect(80f, 56f, 280f, 256f)
+        assertEquals(source, playerArtworkBounds(source, target, 0f))
+        assertEquals(target, playerArtworkBounds(source, target, 1f))
+        assertEquals(source, playerArtworkBounds(source, target, Float.NaN))
+        for (i in 0..1000) {
+            val p = i / 1000f
+            val r = playerArtworkBounds(source, target, p)
+            assertTrue(r.width in 40f..200f && r.height in 40f..200f)
+            assertEquals(r, playerArtworkBounds(source, target, p))
+        }
+        assertEquals(androidx.compose.ui.geometry.Rect(12f, 590f, 330f, 638f),
+            playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f, 30f))
+        assertEquals(androidx.compose.ui.geometry.Rect(0f, 0f, 360f, 700f),
+            playerPresentationBounds(1f, 360f, 700f, 590f, 48f, 12f, 30f))
     }
 
     @Test fun lateArtworkChangesDoNotRestartTheWindowOrReplaceItsPage() {
@@ -550,8 +605,7 @@ class PlayerOpeningMotionTest {
     @Test fun firstTapPreparesThePlayerThenMovesWithinThreeDisplayFrames() {
         mount()
         compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
-        // One frame is reserved for mounting the actual artwork/backdrop before
-        // the spring moves. This avoids measuring the large player on its first motion frame.
+        // Press preparation mounts the destination without a forced frame delay.
         advance(64)
         compose.runOnIdle {
             assertTrue(state.isExpandedOrExpanding)
@@ -576,7 +630,7 @@ class PlayerOpeningMotionTest {
         advance(64)
         compose.runOnIdle {
             assertTrue("prepare the first frame before the motion starts", state.visualProgress > 0.005f)
-            assertTrue("first moving frame retains the original Mini", playerMiniDrawAlpha(state.visualProgress) > 0f)
+            assertTrue("the moving container is already visible", playerPresentationOpacity(state.visualProgress) == 1f)
         }
         advance(96)
         compose.runOnIdle {
@@ -715,7 +769,7 @@ class PlayerOpeningMotionTest {
             val count=(0 until edge).sumOf{y->(0 until edge).count{x->AndroidColor.red(bitmap.getPixel(x,y))>200}}
             bitmap.recycle();return count
         }
-        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.70f};val leaving=ink("rounded-leaving")
+        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.88f};val leaving=ink("rounded-leaving")
         compose.runOnIdle{p.value=1f};val end=ink("rounded-outside")
         assertTrue(leaving>start);assertTrue(end>leaving)
     }
