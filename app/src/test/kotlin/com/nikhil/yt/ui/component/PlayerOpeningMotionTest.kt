@@ -215,6 +215,40 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
+    @Test fun coordinatedTravelAndSurfaceHandoffHaveContinuousEndpoints() {
+        for (opening in listOf(true, false)) {
+            assertEquals(0f, playerTravelCurve(0f, opening), 0f)
+            assertEquals(1f, playerTravelCurve(1f, opening), 0f)
+            assertTrue(playerTravelCurve(0.01f, opening) < 0.00005f)
+            assertTrue(1f - playerTravelCurve(0.99f, opening) < 0.00005f)
+            var last = 0f
+            for (i in 0..1000) {
+                val p = playerTravelCurve(i / 1000f, opening)
+                assertTrue(p >= last - 0.00001f)
+                assertTrue(p in 0f..1f)
+                last = p
+            }
+        }
+        for (i in 0..1000) {
+            val p = i / 1000f
+            val mini = playerMiniDrawAlpha(p)
+            val shell = playerPresentationOpacity(p)
+            val coverage = shell + mini * (1f - shell)
+            assertTrue("No optical hole during the handoff", coverage >= 0.985f)
+            assertEquals(shell, playerClassicSurfaceAlpha(p), 0f)
+            assertEquals(mini, playerClassicMiniAlpha(p), 0f)
+            assertEquals(playerContentOpacity(p), playerClassicContentAlpha(p), 0f)
+            assertTrue(playerMiniApproach(p) in 0.99f..1f)
+            assertTrue(playerMiniHeightScale(p) in 0.99f..1f)
+            if (mini == 0f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
+        }
+        assertTrue(playerNavigationTuck(0.18f) > 0.70f)
+        assertEquals(1f, playerNavigationTuck(0.30f), 0f)
+        assertEquals(0f, playerNavigationTuck(0f), 0f)
+        assertEquals(1f, playerMiniApproach(0f), 0f)
+        assertEquals(1f, playerMiniApproach(1f), 0f)
+    }
+
     @Test fun fullPlayerMotionFinishesWithinShortBoundedTime() {
         mount()
         compose.runOnIdle { state.expandSoft() }
@@ -474,7 +508,7 @@ class PlayerOpeningMotionTest {
         compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
         // One frame is reserved for mounting the actual artwork/backdrop before
         // the spring moves. This avoids measuring the large player on its first motion frame.
-        advance(48)
+        advance(64)
         compose.runOnIdle {
             assertTrue(state.isExpandedOrExpanding)
             assertEquals(1, contentMounts)
@@ -495,7 +529,7 @@ class PlayerOpeningMotionTest {
     @Test fun openingAndClosingUseTheSameMovingFrameWithoutAVisualTeleport() {
         mount()
         compose.runOnIdle { state.expandSoft() }
-        advance(48)
+        advance(64)
         compose.runOnIdle {
             assertTrue("prepare the first frame before the motion starts", state.visualProgress > 0.005f)
             assertTrue("do not throw a fully opaque frame over Mini", playerPresentationOpacity(state.visualProgress) < 0.60f)
