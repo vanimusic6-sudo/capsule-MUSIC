@@ -29,8 +29,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 360f
-internal const val PLAYER_CLOSE_STIFFNESS = 440f
+internal const val PLAYER_OPEN_STIFFNESS = 420f
+internal const val PLAYER_CLOSE_STIFFNESS = 480f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -82,15 +82,15 @@ internal fun playerFrameShadowDp(progress: Float): Float {
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
 /** The destination is visible only within the whole-scene optical envelope. */
-internal fun playerPageVisible(progress: Float): Boolean = playerPresentationOpacity(progress) > 0f
-internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.92f
+internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > PlayerSceneTouchThreshold
+internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.985f
 
 /**
  * Below this threshold the destination is optically gone and the user is looking at Home
  * again. Release BOTH full-screen pointer owners at the same moment, rather than waiting
  * for the last sub-pixel of the closing spring (which made the first Home scroll stall).
  */
-internal const val PlayerSceneTouchThreshold = 0.025f
+internal const val PlayerSceneTouchThreshold = 0.002f
 
 /** The same release boundary is used by the Home blocker and destination player window. */
 internal fun playerSceneShouldInterceptTouch(
@@ -102,12 +102,21 @@ internal fun playerSceneShouldInterceptTouch(
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
 internal const val PLAYER_MINI_FADE_END = 1f
-internal fun playerNavigationTuck(progress: Float): Float = playerPresentationOpacity(progress)
+// Navigation remains behind the opaque page and is covered by its physical edge.
+internal fun playerNavigationTuck(progress: Float): Float = 0f
 internal fun playerMiniDrawAlpha(progress: Float): Float =
     if (boundedProgress(progress) < 1f) 1f else 0f
 // One optical envelope for the complete, live destination scene.
-internal fun playerPresentationOpacity(progress: Float): Float = playerPhase(progress, 0.025f, 0.94f)
-internal fun playerSceneTravelDp(progress: Float): Float = 28f * (1f - boundedProgress(progress))
+internal fun playerPresentationOpacity(progress: Float): Float = if (playerPageVisible(progress)) 1f else 0f
+
+/** One rigid sheet, one translation. The very short invisible anchor tail has no pixels. */
+internal fun playerSheetOffsetPx(progress: Float, viewportHeight: Float): Float {
+    if (!viewportHeight.isFinite() || viewportHeight <= 0f) return 0f
+    return viewportHeight * (1f - playerPhase(progress, PlayerSceneTouchThreshold, 1f))
+}
+
+internal fun playerSheetCornerDp(progress: Float): Float =
+    24f * (1f - playerSoftPhase(progress, 0.78f, 1f))
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 // One shared progress drives the spatial and optical handoff.
 internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
@@ -147,7 +156,7 @@ internal fun playerAtomicContentY(frameTop: Float): Float = if (frameTop.isFinit
 internal fun playerMiniLift(progress: Float, density: Float): Float = 0f
 internal fun playerMiniApproach(progress: Float): Float = CapsuleMotion.miniScaleX(progress)
 internal fun playerMiniHeightScale(progress: Float): Float = CapsuleMotion.miniScaleY(progress)
-internal fun playerPresentationScale(progress: Float): Float = 0.985f + 0.015f * boundedProgress(progress)
+internal fun playerPresentationScale(progress: Float): Float = 1f
 
 internal fun playerPresentationContentY(
     progress: Float, frameTop: Float, density: Float,
