@@ -51,6 +51,9 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
+import com.nikhil.yt.ui.component.playerMiniMaterialAlpha
 import com.nikhil.yt.ui.component.playerArtworkEndpoint
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -697,11 +700,40 @@ internal fun MiniPlayerSurface(
     } else {
         CapsuleMiniText
     }
+    val transition = LocalPlayerArtworkMotion.current
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val surface = MaterialTheme.colorScheme.surface
+    val light = LocalCapsuleLightTheme.current
+    val tokens = capsuleLightCompactTokens(MaterialTheme.colorScheme)
+    val first = colors.getOrElse(0) { primary }
+    val second = colors.getOrElse(1) { secondary }
+    // Glass samples the underlying app and cannot be stretched to a full-page
+    // blur. Use an opaque palette-compatible bridge instead. The real glass
+    // and all other selected styles are retained unchanged at the dock.
+    val material = when (style) {
+        MiniPlayerBackgroundStyle.THEME -> when {
+            pureBlack -> Color.Black to Color.Black
+            light -> tokens.surfaceStart to tokens.surfaceEnd
+            else -> lerp(surface, primary, 0.12f) to lerp(surface, Color.Black, 0.30f)
+        }
+        MiniPlayerBackgroundStyle.GRADIENT -> lerp(first, Color.Black, 0.43f) to lerp(second, Color.Black, 0.48f)
+        MiniPlayerBackgroundStyle.COLOR_FLOW -> lerp(first, Color.Black, 0.40f) to lerp(second, Color.Black, 0.48f)
+        MiniPlayerBackgroundStyle.CAPSULE_STAR -> lerp(first, Color.Black, 0.64f) to lerp(second, Color.Black, 0.70f)
+        MiniPlayerBackgroundStyle.NEBULA -> lerp(first, Color.Black, 0.55f) to lerp(second, Color.Black, 0.63f)
+        MiniPlayerBackgroundStyle.CAPSULE_GLOW -> lerp(first, Color.Black, 0.50f) to lerp(second, Color.Black, 0.65f)
+        MiniPlayerBackgroundStyle.GLASS -> lerp(surface, first, 0.19f) to lerp(surface, second, 0.12f)
+    }
+    SideEffect {
+        transition?.compactMaterial = material.first.copy(alpha = 1f) to material.second.copy(alpha = 1f)
+    }
     Box(modifier) {
+        val materialModifier = Modifier.matchParentSize()
+            .graphicsLayer { alpha = transition?.let { playerMiniMaterialAlpha(it.progress) } ?: 1f }
         if (style == MiniPlayerBackgroundStyle.GLASS) {
             CapsuleGlassSurface(
                 colors = colors,
-                modifier = Modifier.matchParentSize(),
+                modifier = materialModifier,
                 backdrop = glassBackdrop,
                 shape = glassShape,
             )
@@ -710,8 +742,8 @@ internal fun MiniPlayerSurface(
                 style = style,
                 pureBlack = pureBlack,
                 colors = colors,
-                modifier = Modifier.matchParentSize(),
-                animated = animated,
+                modifier = materialModifier,
+                animated = animated && (transition == null || transition.progress <= 0f),
             )
         }
         CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
