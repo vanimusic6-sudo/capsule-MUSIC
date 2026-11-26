@@ -22,6 +22,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
@@ -154,7 +156,7 @@ internal fun PlayerWindow(
                                 val frame = playerPresentationBounds(p, size.width, size.height,
                                     size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
                                 val contour = playerPageContour(p, miniRadius.toPx(), density)
-                                shape = PlayerWindowShape(frame, contour.radius, 0f)
+                                shape = if (p >= 1f) RectangleShape else PlayerWindowShape(frame, contour.radius, 0f)
                                 clip = p < 1f
                                 shadowElevation = playerFrameShadowDp(p).dp.toPx()
                                 // The shell is opaque. Only foreground and outgoing Mini change opacity.
@@ -164,16 +166,21 @@ internal fun PlayerWindow(
                     ) {
                         CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides pageDraws) {
                             Box(
-                                Modifier.fillMaxSize().drawWithContent {
-                                    // Opaque destination base; a compact-material bridge fades
-                                    // away beneath the actual backdrop, never above the cover.
-                                    drawRect(backgroundColor)
+                                Modifier.fillMaxSize().drawWithCache {
                                     val material = artwork.compactMaterial
-                                    val bridge = 1f - playerMaterialReveal(state.visualProgress)
-                                    if (material != null && bridge > 0f) {
-                                        drawRect(Brush.horizontalGradient(listOf(material.first, material.second)), alpha = bridge)
+                                    val bridge = material?.let {
+                                        Brush.horizontalGradient(listOf(it.first, it.second))
                                     }
-                                    drawContent()
+                                    onDrawWithContent {
+                                        val p = state.visualProgress
+                                        // One source material under one destination. Do not
+                                        // fade the source and destination against a third color.
+                                        val reveal = if (atomicScene) playerAtomicSceneAlpha(p)
+                                            else playerMaterialReveal(p)
+                                        if (bridge != null && reveal < 1f) drawRect(bridge)
+                                        else drawRect(backgroundColor)
+                                        drawContent()
+                                    }
                                 }
                                     .then(if (intercept) Modifier.pointerInput(state) {
                                         awaitEachGesture {
@@ -186,9 +193,9 @@ internal fun PlayerWindow(
                                         }
                                     } else Modifier),
                                 content = {
-                                    Box(Modifier.fillMaxSize().graphicsLayer {
+                                    if (!atomicScene) Box(Modifier.fillMaxSize().graphicsLayer {
                                         alpha = playerMaterialReveal(state.visualProgress)
-                                    }, content = backgroundContent)
+                                    }.background(backgroundColor), content = backgroundContent)
                                 },
                             )
                             // Keep actual text, controls and photo in their final layout.
