@@ -106,15 +106,14 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.34f
+internal const val PLAYER_MINI_FADE_END = 0.38f
 internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0f, 0.32f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSoftPhase(progress, 0.075f, PLAYER_MINI_FADE_END)
+    1f - playerSoftPhase(progress, 0.145f, PLAYER_MINI_FADE_END)
 // The tail is a real compact material handoff, not an opaque sheet sinking behind Mini.
 internal fun playerPresentationOpacity(progress: Float): Float = playerSoftPhase(progress, 0.035f, 0.24f)
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
-// The shell is opaque; only incoming foreground fades in. The shared cover
-// draws above this layer, so its pixels never inherit a second opacity.
+// One shared progress drives the spatial and optical handoff.
 internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
     val t = playerPhase(progress, start, end)
     return t * t * (3f - 2f * t)
@@ -123,11 +122,19 @@ internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
 // Opacity phases have soft endpoints, but geometry follows the physical progress.
 // The compact material turns into the real destination, not a second moving card.
 internal fun playerMaterialReveal(progress: Float): Float = playerSoftPhase(progress, 0.08f, 0.63f)
-internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.07f, 0.24f)
-internal fun playerMiniBadgeAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.035f, 0.24f)
-internal fun playerSharedSourceAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.07f, 0.23f)
-internal fun playerSharedDestinationAlpha(progress: Float): Float = playerSoftPhase(progress, 0.88f, 0.98f)
-internal fun playerSharedOverlayAlpha(progress: Float): Float = playerSoftPhase(progress, 0.07f, 0.23f) * (1f - playerSharedDestinationAlpha(progress))
+internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.16f, 0.34f)
+// All dock foreground transfers use the same material ownership, not unrelated fades.
+internal fun playerSharedSourceAlpha(progress: Float): Float = 1f - playerPresentationOpacity(progress)
+internal fun playerLayerAlpha(effective: Float, parent: Float): Float =
+    if (parent <= 0.0001f) 0f else (effective / parent).coerceIn(0f, 1f)
+internal fun playerMiniForegroundLayerAlpha(progress: Float): Float =
+    playerLayerAlpha(playerSharedSourceAlpha(progress), playerMiniDrawAlpha(progress))
+internal fun playerMiniBadgeAlpha(progress: Float): Float =
+    playerLayerAlpha(1f - playerSoftPhase(progress, 0.035f, 0.16f), playerSharedSourceAlpha(progress))
+internal fun playerSharedDestinationAlpha(progress: Float): Float = playerSoftPhase(progress, 0.94f, 0.985f)
+// Keep the moving image behind the real artwork until the latter has acquired full opacity.
+// The parent shell already contributes the source/destination handoff alpha.
+internal fun playerSharedOverlayAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.985f, 1f)
 internal fun playerAtomicSceneAlpha(progress: Float): Float = playerSoftPhase(progress, 0.12f, 0.68f)
 internal fun playerContentOpacity(progress: Float): Float = playerSoftPhase(progress, 0.28f, 0.74f)
 // Shared artwork is allowed to pass across the destination title/transport area.
@@ -167,7 +174,8 @@ internal fun playerFrameGeometryProgress(progress: Float): Float {
     val p = boundedProgress(progress)
     // Finish at the exact dock while the real Mini takes ownership. C1 join
     // to the physical trajectory at 0.24, no trailing rectangle at rest.
-    return p * playerSoftPhase(p, 0.035f, 0.24f)
+    val dockTransfer = playerPresentationOpacity(p)
+    return p * dockTransfer * dockTransfer
 }
 
 internal fun playerPresentationBounds(
