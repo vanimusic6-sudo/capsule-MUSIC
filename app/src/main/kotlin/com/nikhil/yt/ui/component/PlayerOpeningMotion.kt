@@ -111,10 +111,10 @@ internal fun playerMiniDrawAlpha(progress: Float): Float =
     1f - window(progress, 0.08f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float = if (boundedProgress(progress) > 0f) 1f else 0f
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
-// Immersion includes its photograph in this layer: do not leave a solid grey
-// shell exposed while waiting for metadata. Full content settles after the shell.
+// The shell is opaque; only incoming foreground fades in. The shared cover
+// draws above this layer, so its pixels never inherit a second opacity.
 internal fun playerContentOpacity(progress: Float): Float {
-    val t = window(progress, 0.12f, 0.48f)
+    val t = window(progress, 0.10f, 0.45f)
     return t * t * (3f - 2f * t)
 }
 
@@ -127,7 +127,10 @@ internal fun playerPresentationScale(progress: Float): Float =
 
 internal fun playerPresentationContentY(
     progress: Float, frameTop: Float, density: Float,
-): Float = minOf(frameTop.coerceAtLeast(0f) * 0.12f, 22f * density) * (1f - boundedProgress(progress))
+): Float {
+    if (!frameTop.isFinite() || !density.isFinite() || density <= 0f) return 0f
+    return minOf(frameTop.coerceAtLeast(0f) * 0.12f, 22f * density) * (1f - boundedProgress(progress))
+}
 
 /**
  * Coordinates are in the root player's viewport, not in a separately measured overlay.
