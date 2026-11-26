@@ -2,8 +2,6 @@
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -26,7 +24,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -77,13 +74,8 @@ internal fun PlayerWindow(
     LaunchedEffect(state, pressed, compactInteractive) {
         state.setCompactOpenPress(pressed && compactInteractive)
     }
-    // Press feedback is independent of the travel only while docked; once the
-    // card leaves its anchor, the anchor determines every visual phase.
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed && compactInteractive) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = 1f, stiffness = 900f),
-        label = "player-dock-press",
-    )
+    // Keep the real dock and the sampled glass pixels in the same coordinate space.
+    // Press still prewarms the page; scaling a captured backdrop produced a shifted ghost.
     val renderPage by remember(state) { derivedStateOf {
         !state.isDismissed && (state.isExpandedOrExpanding || state.isAnimationRunning ||
             state.compactOpenPress || playerPageVisible(state.visualProgress))
@@ -149,8 +141,8 @@ internal fun PlayerWindow(
                                 val contour = playerPageContour(p, miniRadius.toPx(), density)
                                 shape = if (p >= 1f) RectangleShape else PlayerWindowShape(frame, contour.radius, 0f)
                                 clip = p < 1f
-                                shadowElevation = playerFrameShadowDp(p).dp.toPx()
-                                // The shell is opaque. Only foreground and outgoing Mini change opacity.
+                                shadowElevation = playerFrameShadowDp(p).dp.toPx() * playerPresentationOpacity(p)
+                                // Fade the shell out before the dock handoff; never leave a colored tail.
                                 alpha = playerPresentationOpacity(p)
                             }
                             .drawWithContent { if (pageDraws) drawContent() },
@@ -227,10 +219,6 @@ internal fun PlayerWindow(
                             val p = state.visualProgress
                             val dismiss = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
                             translationY = dismiss
-                            val release = 1f - (1f - pressScale) * (1f - playerPhase(p, 0f, 0.18f))
-                            scaleX = release
-                            scaleY = release
-                            transformOrigin = TransformOrigin(0.5f, 0.5f)
                             alpha = playerMiniDrawAlpha(p)
                         }
                         .semantics { if (!compactInteractive) hideFromAccessibility() }
