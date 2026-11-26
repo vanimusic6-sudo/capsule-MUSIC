@@ -5,6 +5,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import com.nikhil.yt.ui.component.playerArtworkEndpoint
+import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -29,7 +32,9 @@ internal fun CapsuleTrackArtworkHandoff(
 ) {
     key(mediaId) {
         if (decodedPainter != null) {
-            val alpha = remember { Animatable(0f) }
+            val motion = LocalPlayerArtworkMotion.current
+            // A cached cover enters with the container; track changes at rest still fade.
+            val alpha = remember { Animatable(if (motion != null && motion.progress < 0.9f) 1f else 0f) }
             LaunchedEffect(decodedPainter) {
                 alpha.animateTo(1f, tween(CAPSULE_COVER_HANDOFF_MS))
             }
@@ -37,7 +42,9 @@ internal fun CapsuleTrackArtworkHandoff(
                 painter = decodedPainter,
                 contentDescription = null,
                 contentScale = contentScale,
-                modifier = modifier.graphicsLayer { this.alpha = alpha.value },
+                modifier = modifier.graphicsLayer { this.alpha = alpha.value }
+                    .playerArtworkEndpoint(mediaId, decodedPainter, mini = false,
+                        radius = 16.dp, contentScale = contentScale),
             )
         }
     }
