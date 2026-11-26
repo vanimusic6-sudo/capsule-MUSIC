@@ -215,6 +215,16 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
+    @Test fun fullPlayerMotionFinishesWithinShortBoundedTime() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        advance((PLAYER_OPEN_DURATION_MS + 64).toLong())
+        compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
+        compose.runOnIdle { state.collapseSoft() }
+        advance((PLAYER_CLOSE_DURATION_MS + 64).toLong())
+        compose.runOnIdle { assertTrue(state.isCollapsed); assertFalse(state.isAnimationRunning) }
+    }
+
     @Test fun contourStartsAtRealMiniRadiusAndStaysRoundUntilFullscreen() {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
@@ -520,11 +530,11 @@ class PlayerOpeningMotionTest {
         mount();compose.runOnIdle {state.expandSoft()};advance(96)
         val before=compose.runOnIdle {state.value.value}
         compose.runOnIdle {state.collapseSoft();assertEquals(before,state.value.value,0.01f)}
-        // A soft spring carries its existing velocity briefly before turning. Forcing the
-        // previous 96ms direction deadline would reintroduce the abrupt reversal being fixed.
+        // The bounded transition reverses immediately from the existing
+        // position, rather than coasting in the wrong direction.
         advance(32)
-        val coasting=compose.runOnIdle {state.value.value}
-        assertTrue("reversal must preserve momentum: $before -> $coasting",coasting>=before-0.01f)
+        val turning=compose.runOnIdle {state.value.value}
+        assertTrue("reversal must not continue opening: $before -> $turning",turning<=before+0.01f)
         advance(160)
         val closing=compose.runOnIdle {state.value.value}
         assertTrue("the latest closing intent must turn the same page: $before -> $closing",closing<before)
