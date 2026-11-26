@@ -111,7 +111,7 @@ internal fun PlayerWindow(
         // position and size. Glass therefore never moves a sampled backdrop.
         if (onDismiss == null || !state.isDismissed) {
             Box(
-                Modifier
+                Modifier.zIndex(if (compactInteractive) 2f else 0f)
                     .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
                     .fillMaxWidth().height(miniHeight)
                     .graphicsLayer {
