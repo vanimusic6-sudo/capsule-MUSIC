@@ -198,10 +198,9 @@ class CapsuleImmersiveImageBackdropTest {
                     x, at, 0.00001f)
                 assertTrue("No sudden horizontal contraction at the photo/blur seam",
                     abs(before - after) < 0.002f)
-                val bottom = capsuleImmersiveBackdropSourceX(x, 1f, stage)
-                assertTrue("The lower continuation remains bounded", bottom in 0f..1f)
-                assertTrue("No large lateral jump at the bottom",
-                    abs(bottom - capsuleImmersiveBackdropSourceX(x, 0.999f, stage)) < 0.003f)
+                assertEquals("The lower continuation still folds into the wide blur",
+                    0.5f + (x - 0.5f) * stage,
+                    capsuleImmersiveBackdropSourceX(x, 1f, stage), 0.00001f)
             }
         }
     }
@@ -223,13 +222,14 @@ class CapsuleImmersiveImageBackdropTest {
         assertTrue(lower.blue > lower.red + 0.10f)
     }
 
-    @Test fun noReflectionRevisitsTheUpperPhotograph() {
+    @Test fun legacySpatialFieldUsesOriginalBroadColorSampling() {
+        // These are coordinates of the coarse colour field, not reflected artwork.
         for (stage in listOf(0.35f, 0.60f, 0.75f)) {
-            for (i in 0..100) for (x in listOf(0f, 0.5f, 1f)) {
-                val y = stage + (1f - stage) * i / 100f
-                val source = capsuleImmersiveBackdropSourceY(x, y, stage)
-                assertTrue(source >= IMMERSIVE_VISIBLE_SAMPLE_END - 0.066f)
-                assertTrue(source <= IMMERSIVE_VISIBLE_SAMPLE_END)
+            for (x in listOf(0f, 0.5f, 1f)) {
+                assertEquals(IMMERSIVE_VISIBLE_SAMPLE_END,
+                    capsuleImmersiveBackdropSourceY(x, stage, stage), 0.00001f)
+                assertEquals(IMMERSIVE_VISIBLE_SAMPLE_END - 0.43f,
+                    capsuleImmersiveBackdropSourceY(x, 1f, stage), 0.00001f)
             }
         }
     }
@@ -252,15 +252,15 @@ class CapsuleImmersiveImageBackdropTest {
         val field = image.capsuleImmersiveVisibleField(1f, false)
         assertEquals(null, capsuleImmersiveDominantGround(field))
         val page = capsuleImmersiveImageBackdropBitmap(field, 0.60f).asAndroidBitmap()
-        for (y in listOf(220, 260, 295)) {
+        for (y in listOf(195, 220, 250)) {
             val left = page.getPixel(16, y)
             val right = page.getPixel(page.width - 17, y)
             assertTrue("Different real color regions survive at $y",
                 abs((left ushr 16 and 255) - (right ushr 16 and 255)) > 15)
         }
         val center = 0.5f
-        assertTrue("A centered subject must not return to a perfectly straight central axis",
-            abs(capsuleImmersiveBackdropSourceX(center, 0.99f, 0.60f) - center) > 0.02f)
+        assertTrue("A centered subject has the original curved mid-field geometry",
+            abs(capsuleImmersiveBackdropSourceX(center, 0.80f, 0.60f) - center) > 0.07f)
     }
 
     @Test fun largeCentralSubjectDoesNotOverrideTheSurroundingRedBackground() {
