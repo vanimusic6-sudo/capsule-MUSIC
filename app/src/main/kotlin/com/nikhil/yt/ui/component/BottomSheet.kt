@@ -573,15 +573,11 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
         stiffness = Spring.StiffnessLow,
     )
 
-// Keep the main branch's anchored travel. Change ONLY the settling response:
-// a critically damped spring carries velocity through interruptions and reaches the last pixel
-// without a lingering tail. These specs apply to the player, never to menus or the queue.
-// Lower initial acceleration, soft near-critical settling, no visible bounce. Both travel the
-// exact same physical anchors; Back starts from the current offset and velocity.
+// Both player layouts share the same finite, non-elastic anchor motion.
 internal val PlayerClassicOpenAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 110f, visibilityThreshold = 0.75f)
+    PlayerOpenAnimation
 internal val PlayerClassicCloseAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 128f, visibilityThreshold = 0.75f)
+    PlayerCloseAnimation
 
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
