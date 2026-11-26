@@ -116,8 +116,10 @@ class PlayerTransitionArchitectureTest {
         assertTrue(window.contains("PlayerWindowShape(frame, contour.radius, 0f)"))
         assertTrue(window.contains("artwork.draw(this, frame,"))
         assertTrue(artwork.contains("activeMediaId == matchingId()"))
-        assertTrue(artwork.contains("activePainter = destination?.painter"))
-        assertTrue(artwork.contains("if (!motion.suppress(endpoint, mini)) drawContent()"))
+        assertTrue(artwork.contains("activePainter = b.painter"))
+        assertTrue(artwork.contains("motion.endpointOpacity(endpoint, mini)"))
+        assertTrue(artwork.contains("capturedSource = bounds(a)"))
+        assertTrue(artwork.contains("capturedDestination = bounds(b)"))
         assertFalse(artwork.contains("AsyncImage("))
         assertTrue(mini.contains(".playerArtworkEndpoint("))
         assertTrue(light.contains(".playerArtworkEndpoint("))
@@ -126,7 +128,8 @@ class PlayerTransitionArchitectureTest {
         assertTrue(window.contains("if (atomicScene) playerAtomicSceneAlpha(p)"))
         assertTrue(artwork.contains("clipPath(frameClip)"))
         assertTrue(mini.contains("transition?.compactMaterial"))
-        assertTrue(mini.contains("playerMiniMaterialAlpha(it.progress)"))
+        assertTrue(mini.contains("playerLayerAlpha(playerMiniMaterialAlpha(p), outer)"))
+        assertTrue(mini.contains("playerMiniBadgeAlpha(it.progress)"))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
