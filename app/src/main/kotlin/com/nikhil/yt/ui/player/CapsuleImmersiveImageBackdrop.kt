@@ -507,7 +507,36 @@ private fun solidImmersiveBackdropSourceY(
         .coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END)
 }
 
-/** Full photographic continuation, baked once on a worker. No progressive blur strip. */
+// Ordered sub-LSB dithering is baked into the texture once. A shared
+// RGB offset preserves hue; no animated grain or shader is needed.
+private val immersiveDither4x4 = intArrayOf(
+    0, 8, 2, 10,
+    12, 4, 14, 6,
+    3, 11, 1, 9,
+    15, 7, 13, 5,
+)
+
+internal fun immersiveGradientDither(x: Int, y: Int): Float =
+    (immersiveDither4x4[(y and 3) * 4 + (x and 3)] + 0.5f) / 16f - 0.5f
+
+/** Round the original exposure curve's two slope changes within a narrow window. */
+internal fun immersiveLegacyScrim(y: Float): Float {
+    val p = y.coerceIn(0f, 1f)
+    val a = 0.03f / 0.38f
+    val b = 0.11f / 0.30f
+    val c = 0.26f / 0.32f
+    fun roundedHinge(edge: Float): Float {
+        val radius = 0.025f
+        val t = p - edge
+        if (t <= -radius) return 0f
+        if (t >= radius) return t
+        return (t + radius) * (t + radius) / (4f * radius)
+    }
+    return a * p + (b - a) * roundedHinge(0.38f) +
+        (c - b) * roundedHinge(0.68f)
+}
+
+/** Full photographic continuation, baked once on a worker. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
     val raw = FloatArray(PAGE_COLUMNS * PAGE_ROWS * 3)
@@ -565,11 +594,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         // Preserve the old darkness at the top, middle and bottom, but
         // eliminate changes of slope at hard-coded horizontal boundaries.
         val scrim = if (ground != null) 0.40f * Math.pow(pageY.toDouble(), 2.7).toFloat()
-        else when {
-            pageY < 0.38f -> pageY / 0.38f * 0.03f
-            pageY < 0.68f -> 0.03f + (pageY - 0.38f) / 0.30f * 0.11f
-            else -> 0.14f + (pageY - 0.68f) / 0.32f * 0.26f
-        }
+        else immersiveLegacyScrim(pageY)
         val groundMix = if (groundChannels != null)
             immersiveSmootherStep(stage * 0.72f, stage * 0.98f, pageY)
         else 0f
@@ -582,6 +607,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
                 continue
             }
             var pixel = -0x1000000
+            val dither = if (groundChannels == null) immersiveGradientDither(x, y) else 0f
             for (c in 0..2) {
                 var value = 0f
                 for (dy in 0..3) {
@@ -591,7 +617,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
                 }
                 val settled = if (groundChannels != null)
                     value + (groundChannels[c] - value) * groundMix else value
-                pixel = pixel or ((settled * (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255) shl (16 - c * 8))
+                pixel = pixel or ((settled * (1f - scrim) * 255f + 0.5f + dither).toInt().coerceIn(0, 255) shl (16 - c * 8))
             }
             pixels[y * PAINT_WIDTH + x] = pixel
         }
