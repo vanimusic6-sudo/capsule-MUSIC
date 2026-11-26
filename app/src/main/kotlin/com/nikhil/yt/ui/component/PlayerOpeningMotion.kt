@@ -1,7 +1,8 @@
 /* Capsule MUSIC — one physical timeline for the player window and its app scene. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -27,11 +28,18 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.nikhil.yt.ui.motion.CapsuleMotion
 
-// One critically damped anchor drives frame, artwork and source Mini. A new target interrupts the
-// SAME spring with its existing velocity; no independent mini/page clocks or decorative rebound.
-// The anchor travels hundreds of pixels: settle inside 1.25 px, with no perceptible late snap.
-internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 180f, visibilityThreshold = 1.25f)
-internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 220f, visibilityThreshold = 1.25f)
+// One bounded timeline for both layouts: no overshoot or sub-pixel spring tail.
+// A reversed request starts from the actual current anchor, not an endpoint.
+internal const val PLAYER_OPEN_DURATION_MS = 280
+internal const val PLAYER_CLOSE_DURATION_MS = 240
+internal val PlayerOpenAnimation = tween<Float>(
+    durationMillis = PLAYER_OPEN_DURATION_MS,
+    easing = CubicBezierEasing(0.22f, 0.10f, 0.22f, 1f),
+)
+internal val PlayerCloseAnimation = tween<Float>(
+    durationMillis = PLAYER_CLOSE_DURATION_MS,
+    easing = CubicBezierEasing(0.28f, 0f, 0.36f, 1f),
+)
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
@@ -93,11 +101,11 @@ internal fun playerSceneShouldInterceptTouch(
 
 // The real mini starts returning before the closing window reaches its final dock.
 // Both surfaces use the same anchor, so no late source swap or flash is introduced.
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.16f, 0.68f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.13f, 0.60f)
 internal fun playerMiniLift(progress: Float, density: Float): Float =
-    -6f * density * window(progress, 0f, 0.48f)
+    -2f * density * window(progress, 0f, 0.48f)
 internal fun playerMiniApproach(progress: Float): Float =
-    1f + 0.018f * window(progress, 0f, 0.48f)
+    1f
 
 // Let the real page content become readable slightly earlier as the Mini recedes.
 // The contour still supplies the large size change; the small scale settle eases at both ends.
@@ -117,7 +125,7 @@ internal fun playerPresentationScale(progress: Float): Float =
 // scale and translation are exactly identity. No separate horizontal translation at all.
 internal fun playerPresentationContentY(
     progress: Float, frameTop: Float, density: Float,
-): Float = frameTop - 24f * density * (1f - boundedProgress(progress))
+): Float = frameTop - 10f * density * (1f - boundedProgress(progress))
 
 /**
  * Coordinates are in the root player's viewport, not in a separately measured overlay.
@@ -131,7 +139,7 @@ internal fun playerPresentationContentY(
  */
 internal fun playerFrameGeometryProgress(progress: Float): Float = boundedProgress(progress).let { p ->
     // A gentle magnetic departure, with a continuous first derivative at both anchors.
-    p - 0.42f * p * (1f - p) * (1f - p)
+    p - 0.12f * p * (1f - p)
 }
 
 internal fun playerPresentationBounds(
