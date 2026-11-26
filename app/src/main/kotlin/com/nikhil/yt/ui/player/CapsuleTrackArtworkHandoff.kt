@@ -44,7 +44,7 @@ internal fun CapsuleTrackArtworkHandoff(
                 contentScale = contentScale,
                 modifier = modifier.graphicsLayer { this.alpha = alpha.value }
                     .playerArtworkEndpoint(mediaId, decodedPainter, mini = false,
-                        radius = 16.dp, contentScale = contentScale),
+                        radius = 16.dp, contentScale = contentScale, parentOwnsOpacity = true),
             )
         }
     }
