@@ -127,6 +127,7 @@ internal data class ImmersiveGradientFrame(
     val visibleTail: CapsuleColorField?,
     val diffusionTail: CapsuleColorField?,
     val painter: Painter,
+    val photoBlur: ImageBitmap? = null,
 )
 
 internal data class ImmersivePreparedScene(
@@ -153,6 +154,7 @@ private fun immersiveGradientFrame(
     edgeBands = tone.edgeBands, colorField = tone.colorField,
     visibleTail = tone.visibleTail, diffusionTail = tone.diffusionTail,
     painter = painter,
+    photoBlur = tone.photoBlur,
 )
 
 /** Image-backed Immersion; metadata contrast is sampled from the prepared page. */
@@ -190,6 +192,7 @@ internal fun ImmersiveAudioScene(
     background: ImageBitmap,
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
+    photoBlur: ImageBitmap? = null,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
@@ -200,6 +203,27 @@ internal fun ImmersiveAudioScene(
             bitmap = background, contentDescription = null,
             contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
         )
+        // Blend actual photographic detail into the existing diffuse colour field.
+        // This is a small pre-baked bitmap, not a second decode or animated blur.
+        if (photoBlur != null) {
+            Image(
+                bitmap = photoBlur,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithCache {
+                        val mask = Brush.verticalGradient(*Array(65) { i ->
+                            val y = i / 64f
+                            y to Color.White.copy(alpha = immersiveBlurredPhotoAlpha(y))
+                        })
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(mask, blendMode = BlendMode.DstIn)
+                        }
+                    },
+            )
+        }
         Box(
             Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
                 .clipToBounds()
@@ -839,7 +863,7 @@ internal fun CapsuleImmersiveContent(
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction) {
-            "image-original-direction-v6|${frame?.key}|$coverFraction"
+            "image-original-direction-v7|${frame?.key}|$coverFraction"
         }
         // This texture is keyed to the currently displayed frame. No outgoing
         // bitmap is retained, so there is no cross-song GPU layer to draw.
@@ -970,6 +994,7 @@ internal fun CapsuleImmersiveContent(
                     ImmersiveAudioScene(
                         background = preparedPaint,
                         artworkHeight = artworkHeight,
+                        photoBlur = preparedFrame.photoBlur,
                         sceneAlpha = { sceneRevealAlpha.value },
                     ) {
                         Box(Modifier.fillMaxSize()) {
