@@ -240,39 +240,47 @@ internal fun capsuleImmersiveVisibleMean(field: CapsuleColorField): Color {
  * Metrolist's progressive artwork blur is the visual reference; this is an
  * independent CPU implementation with no reflection or new dependencies.
  */
+internal const val IMMERSIVE_BLUR_STRIP_START = 0.64f
+
 internal fun Bitmap.capsuleImmersivePhotoBlur(aspect: Float, landscape: Boolean): ImageBitmap {
-    val target = aspect.coerceIn(0.55f, 2.2f)
+    val target = if (aspect.isFinite()) aspect.coerceIn(0.55f, 2.2f) else 1f
     val natural = width.toFloat() / height.coerceAtLeast(1)
     val zoom = if (landscape) 1.06f else 1f
     val cropWidth = (if (natural > target) height * target else width.toFloat()) / zoom
     val cropHeight = (if (natural < target) width / target else height.toFloat()) / zoom
     val w = 192
-    val h = (w / target).toInt().coerceIn(88, 350)
+    val fullH = (w / target).toInt().coerceIn(88, 350)
+    // Only decode the lower half into the working texture, with padding above
+    // the visible strip so the convolution never clamps at the fade boundary.
+    val stripH = (fullH * (1f - IMMERSIVE_BLUR_STRIP_START)).toInt().coerceAtLeast(2)
+    val h = (fullH * 0.58f).toInt().coerceAtLeast(stripH + 1)
     val left = ((width - cropWidth) * 0.5f).toInt().coerceIn(0, width - 1)
-    val top = ((height - cropHeight) * 0.5f).toInt().coerceIn(0, height - 1)
+    val cropTop = (height - cropHeight) * 0.5f
+    val top = (cropTop + cropHeight * (1f - h.toFloat() / fullH)).toInt().coerceIn(0, height - 1)
     val right = (left + cropWidth.toInt()).coerceIn(left + 1, width)
-    val bottom = (top + cropHeight.toInt()).coerceIn(top + 1, height)
+    val bottom = (cropTop + cropHeight).toInt().coerceIn(top + 1, height)
     val scaled = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    scaled.eraseColor(android.graphics.Color.BLACK)
-    android.graphics.Canvas(scaled).drawBitmap(
-        this, android.graphics.Rect(left, top, right, bottom),
-        android.graphics.Rect(0, 0, w, h),
-        android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG),
-    )
-    val original = IntArray(w * h)
-    try { scaled.getPixels(original, 0, w, 0, 0, w, h) }
-    finally { scaled.recycle() }
+    val source = IntArray(w * h)
+    try {
+        scaled.eraseColor(android.graphics.Color.BLACK)
+        android.graphics.Canvas(scaled).drawBitmap(
+            this, android.graphics.Rect(left, top, right, bottom),
+            android.graphics.Rect(0, 0, w, h),
+            android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG),
+        )
+        scaled.getPixels(source, 0, w, 0, 0, w, h)
+    } finally { scaled.recycle() }
 
-    // Sliding-window convolution; edge clamping, not mirrored pixels.
-    fun pass(source: IntArray, horizontal: Boolean, radius: Int): IntArray {
-        val output = IntArray(source.size)
+    // Two reusable buffers. No full-artwork blur or per-pass allocation.
+    val scratch = IntArray(source.size)
+    fun pass(input: IntArray, output: IntArray, horizontal: Boolean, radius: Int) {
         val lines = if (horizontal) h else w
         val length = if (horizontal) w else h
         val stride = if (horizontal) 1 else w
         val divisor = radius * 2 + 1
         for (line in 0 until lines) {
             val start = if (horizontal) line * w else line
-            fun pixel(pos: Int) = source[start + pos.coerceIn(0, length - 1) * stride]
+            fun pixel(pos: Int) = input[start + pos.coerceIn(0, length - 1) * stride]
             var r = 0; var g = 0; var b = 0
             for (i in -radius..radius) {
                 val p = pixel(i)
@@ -288,31 +296,37 @@ internal fun Bitmap.capsuleImmersivePhotoBlur(aspect: Float, landscape: Boolean)
                 b += (add and 255) - (remove and 255)
             }
         }
-        return output
     }
-    fun blur(input: IntArray, radius: Int): IntArray {
-        var data = input
-        repeat(3) { data = pass(pass(data, true, radius), false, radius) }
-        return data
+    repeat(2) {
+        pass(source, scratch, true, 5)
+        pass(scratch, source, false, 5)
     }
-    val soft = blur(original, 4)
-    val diffuse = blur(soft, 13)
-    val result = IntArray(original.size)
-    for (y in 0 until h) {
-        val p = ((y.toFloat() / (h - 1) - 0.42f) / 0.46f).coerceIn(0f, 1f)
-        val mix = p * p * (3f - 2f * p)
+    val offset = h - stripH
+    val soft = source.copyOfRange(offset * w, source.size)
+    repeat(2) {
+        pass(source, scratch, true, 10)
+        pass(scratch, source, false, 10)
+    }
+    val result = IntArray(w * stripH)
+    for (y in 0 until stripH) {
+        val fraction = IMMERSIVE_BLUR_STRIP_START +
+            (1f - IMMERSIVE_BLUR_STRIP_START) * y / (stripH - 1)
+        val mix = immersiveSmootherStep(0.67f, 0.96f, fraction)
+        val alpha = (immersiveBlurredPhotoAlpha(fraction) * 255f + 0.5f).toInt().coerceIn(0, 255)
         for (x in 0 until w) {
             val i = y * w + x
             fun channel(shift: Int): Int {
                 val a = soft[i] ushr shift and 255
-                val b = diffuse[i] ushr shift and 255
+                val b = source[(y + offset) * w + x] ushr shift and 255
                 return (a + (b - a) * mix + 0.5f).toInt().coerceIn(0, 255)
             }
-            result[i] = 0xFF000000.toInt() or (channel(16) shl 16) or
+            // Bake the opacity into the small strip. Compose can draw it
+            // directly; no separate full-height GPU masking layer.
+            result[i] = (alpha shl 24) or (channel(16) shl 16) or
                 (channel(8) shl 8) or channel(0)
         }
     }
-    return Bitmap.createBitmap(result, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+    return Bitmap.createBitmap(result, w, stripH, Bitmap.Config.ARGB_8888).asImageBitmap()
 }
 
 /** Single C2-continuous fade envelope: no intermediate opacity shelves. */
@@ -323,13 +337,13 @@ private fun immersiveSmootherStep(start: Float, end: Float, value: Float): Float
 
 internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
     if (!fraction.isFinite()) return 0f
-    return 1f - immersiveSmootherStep(0.34f, 0.88f, fraction)
+    return 1f - immersiveSmootherStep(0.66f, 0.91f, fraction)
 }
 
 /** Total contribution of the sharp and blurred artwork over the colour field. */
 internal fun immersivePhotoCombinedAlpha(fraction: Float): Float {
     if (!fraction.isFinite()) return 0f
-    return 1f - immersiveSmootherStep(0.44f, 1f, fraction)
+    return 1f - immersiveSmootherStep(0.76f, 1f, fraction)
 }
 
 /**
@@ -339,7 +353,7 @@ internal fun immersivePhotoCombinedAlpha(fraction: Float): Float {
  * when the sharp image disappears and the blurred image starts fading.
  */
 internal fun immersiveBlurredPhotoAlpha(fraction: Float): Float {
-    if (!fraction.isFinite() || fraction <= 0.34f || fraction >= 1f) return 0f
+    if (!fraction.isFinite() || fraction <= 0.66f || fraction >= 1f) return 0f
     val sharp = immersivePhotoFeatherAlpha(fraction)
     val total = immersivePhotoCombinedAlpha(fraction)
     val remainder = 1f - sharp
@@ -476,9 +490,16 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         // eliminate changes of slope at hard-coded horizontal boundaries.
         val scrim = 0.40f * Math.pow(pageY.toDouble(), 2.7).toFloat()
         val groundMix = if (groundChannels != null)
-            immersiveSmootherStep(stage * 0.54f, stage * 0.98f, pageY)
+            immersiveSmootherStep(stage * 0.72f, stage * 0.98f, pageY)
         else 0f
         for (x in 0 until PAINT_WIDTH) {
+            if (groundChannels != null && groundMix >= 1f) {
+                fun channel(c: Int) = (groundChannels[c] * (1f - scrim) * 255f + 0.5f)
+                    .toInt().coerceIn(0, 255)
+                pixels[y * PAINT_WIDTH + x] = 0xFF000000.toInt() or
+                    (channel(0) shl 16) or (channel(1) shl 8) or channel(2)
+                continue
+            }
             var pixel = -0x1000000
             for (c in 0..2) {
                 var value = 0f
