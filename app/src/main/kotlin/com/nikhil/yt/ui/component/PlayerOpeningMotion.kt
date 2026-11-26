@@ -148,15 +148,17 @@ internal fun playerPresentationBounds(
     miniTop: Float,
     miniHeight: Float,
     miniInset: Float,
+    miniRightInset: Float = miniInset,
 ): Rect {
     val p = playerFrameGeometryProgress(progress)
-    val inset = miniInset.coerceIn(0f, width * 0.5f)
+    val leftInset = miniInset.coerceIn(0f, width * 0.5f)
+    val rightInset = miniRightInset.coerceIn(0f, width * 0.5f)
     val sourceTop = miniTop.coerceIn(0f, height)
     val sourceBottom = (sourceTop + miniHeight).coerceIn(sourceTop, height)
     return Rect(
-        left = inset * (1f - window(p, 0f, 0.60f)),
+        left = leftInset * (1f - window(p, 0f, 0.60f)),
         top = sourceTop * (1f - p),
-        right = width - inset * (1f - window(p, 0f, 0.60f)),
+        right = width - rightInset * (1f - window(p, 0f, 0.60f)),
         bottom = sourceBottom + (height - sourceBottom) * p,
     )
 }
