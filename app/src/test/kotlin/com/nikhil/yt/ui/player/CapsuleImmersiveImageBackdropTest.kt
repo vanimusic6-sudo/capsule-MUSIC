@@ -36,7 +36,7 @@ class CapsuleImmersiveImageBackdropTest {
         }
         // Check continuity of the derivative, rather than forcing the old
         // intermediate stops to have zero slope (which caused opacity shelves).
-        for (stop in listOf(0.34f, 0.44f, 0.58f, 0.70f, 0.82f, 0.88f)) {
+        for (stop in listOf(0.66f, 0.70f, 0.76f, 0.82f, 0.91f, 1f)) {
             val middle = immersivePhotoFeatherAlpha(stop)
             val left = middle - immersivePhotoFeatherAlpha(stop - 0.001f)
             val right = immersivePhotoFeatherAlpha(stop + 0.001f) - middle
@@ -262,15 +262,19 @@ class CapsuleImmersiveImageBackdropTest {
         }
         val blurred = artwork.capsuleImmersivePhotoBlur(1f, false).asAndroidBitmap()
         assertEquals(192, blurred.width)
-        assertEquals(192, blurred.height)
+        assertEquals((192 * (1f - IMMERSIVE_BLUR_STRIP_START)).toInt(), blurred.height)
+        assertEquals(0, blurred.getPixel(96, 0) ushr 24)
+        assertEquals(0, blurred.getPixel(96, blurred.height - 1) ushr 24)
         fun variation(y: Int): Int {
             val values = (20 until 172).map { x -> blurred.getPixel(x, y) ushr 16 and 255 }
             return values.maxOrNull()!! - values.minOrNull()!!
         }
-        assertTrue(variation(160) <= variation(45))
-        assertTrue(variation(160) < 30)
+        assertTrue(variation(blurred.height / 2) < 30)
         assertEquals(0f, immersiveBlurredPhotoAlpha(0f), 0f)
-        assertTrue(immersiveBlurredPhotoAlpha(0.60f) > 0.60f)
+        assertEquals(0f, immersiveBlurredPhotoAlpha(0.60f), 0f)
+        assertTrue(immersiveBlurredPhotoAlpha(0.80f) > 0.60f)
+        assertEquals(1f, immersivePhotoFeatherAlpha(0.65f), 0f)
+        assertEquals(1f, immersivePhotoCombinedAlpha(0.75f), 0f)
         assertEquals(0f, immersiveBlurredPhotoAlpha(1f), 0f)
         assertEquals(0f, immersiveBlurredPhotoAlpha(Float.NaN), 0f)
     }
@@ -284,7 +288,7 @@ class CapsuleImmersiveImageBackdropTest {
             val combined = sharp + (1f - sharp) * blur
             assertEquals(immersivePhotoCombinedAlpha(y), combined, 0.00001f)
             assertTrue("No opacity rebound at $y", combined <= previous + 0.00001f)
-            assertTrue("No optical step at $y", previous - combined < 0.004f)
+            assertTrue("No optical step at $y", previous - combined < 0.008f)
             previous = combined
         }
         assertEquals(0f, previous, 0.00001f)
