@@ -70,7 +70,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -587,16 +586,9 @@ fun CapsulePlayerContent(
     // unmount this expensive tree without losing the current decoded cover.
     // Reading the already decoded bitmap on resume avoids an unnecessary 960px refetch.
 
-    val playerArtworkMotion = LocalPlayerArtworkMotion.current
     val artworkContent: @Composable () -> Unit = {
 
                 CapsuleVideoArtworkTransition(
-                    // Hide the entire native artwork slot, including its black matte,
-                    // while the shared painter owns the photo. The slot stays measured.
-                    modifier = Modifier.graphicsLayer {
-                        alpha = if (isCapsuleVideoPlaying || needsVideoSurface) 1f
-                            else playerArtworkMotion?.nativeArtworkOpacity(mediaMetadata.id) ?: 1f
-                    },
                     presentingVideo = isCapsuleVideoPlaying,
                     needsSurface = needsVideoSurface,
                     transitionKey = mediaMetadata.id,
