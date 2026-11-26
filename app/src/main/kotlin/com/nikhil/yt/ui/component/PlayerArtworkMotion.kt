@@ -135,6 +135,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         val p = progress
         val t = playerArtworkTravel(p, startProgress)
         val rect = playerContainedArtworkBounds(from, to, t, frame)
+        if (rect.width <= 0f || rect.height <= 0f) return
         with(scope) {
             val radius = (a.radius.toPx() + (b.radius.toPx() - a.radius.toPx()) * t)
                 .coerceIn(0f, minOf(rect.width, rect.height) * 0.5f)
