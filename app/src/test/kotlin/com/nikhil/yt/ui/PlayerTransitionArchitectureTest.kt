@@ -114,14 +114,19 @@ class PlayerTransitionArchitectureTest {
         assertTrue(sheet.contains("if (state.playerMotion) {"))
         assertFalse(sheet.contains("playerPageNeedsFirstFrame"))
         assertTrue(window.contains("PlayerWindowShape(frame, contour.radius, 0f)"))
-        assertTrue(window.contains("artwork.draw(this)"))
+        assertTrue(window.contains("artwork.draw(this, frame,"))
         assertTrue(artwork.contains("activeMediaId == matchingId()"))
         assertTrue(artwork.contains("activePainter = destination?.painter"))
         assertTrue(artwork.contains("if (!motion.suppress(endpoint, mini)) drawContent()"))
         assertFalse(artwork.contains("AsyncImage("))
         assertTrue(mini.contains(".playerArtworkEndpoint("))
         assertTrue(light.contains(".playerArtworkEndpoint("))
-        assertTrue(immersion.contains(".playerArtworkEndpoint("))
+        assertFalse(immersion.contains(".playerArtworkEndpoint("))
+        assertTrue(window.contains("sharedArtwork && !atomicScene"))
+        assertTrue(window.contains("if (atomicScene) playerAtomicSceneAlpha(p)"))
+        assertTrue(artwork.contains("clipPath(frameClip)"))
+        assertTrue(mini.contains("transition?.compactMaterial"))
+        assertTrue(mini.contains("playerMiniMaterialAlpha(it.progress)"))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
