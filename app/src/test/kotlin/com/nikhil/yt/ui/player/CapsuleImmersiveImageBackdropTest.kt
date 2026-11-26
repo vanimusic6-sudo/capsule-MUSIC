@@ -342,6 +342,28 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun subtleDitherPreservesMeanAndSmoothsQuantizedGradients() {
+        val offsets = (0..3).flatMap { y -> (0..3).map { x -> immersiveGradientDither(x, y) } }
+        assertEquals(16, offsets.toSet().size)
+        assertEquals(0f, offsets.sum(), 0.00001f)
+        assertTrue(offsets.all { abs(it) < 0.5f })
+        val levels = offsets.map { (64.4f + 0.5f + it).toInt() }
+        assertEquals(setOf(64, 65), levels.toSet())
+        assertEquals(64.4f, levels.average().toFloat(), 0.07f)
+        var previous = 0f
+        for (i in 0..1000) {
+            val value = immersiveLegacyScrim(i / 1000f)
+            assertTrue(value >= previous - 0.00001f)
+            previous = value
+        }
+        assertEquals(0.40f, previous, 0.00001f)
+        for (edge in listOf(0.38f, 0.68f)) {
+            val left = immersiveLegacyScrim(edge) - immersiveLegacyScrim(edge - 0.001f)
+            val right = immersiveLegacyScrim(edge + 0.001f) - immersiveLegacyScrim(edge)
+            assertTrue(abs(left - right) < 0.00003f)
+        }
+    }
+
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()
