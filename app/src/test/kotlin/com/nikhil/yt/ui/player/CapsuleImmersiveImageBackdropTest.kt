@@ -290,6 +290,29 @@ class CapsuleImmersiveImageBackdropTest {
         assertEquals(0f, previous, 0.00001f)
     }
 
+    @Test fun solidSurroundHasNoSecondaryColourBandBelowArtwork() {
+        val image = photo().apply {
+            eraseColor(0xFFDF262D.toInt())
+            Canvas(this).drawRect(27f, 65f, 293f, 292f,
+                Paint().apply { color = 0xFF1635A6.toInt() })
+        }
+        val field = image.capsuleImmersiveVisibleField(1f, false)
+        val ground = requireNotNull(capsuleImmersiveDominantGround(field))
+        assertTrue(ground.red > ground.blue + 0.40f)
+        val page = capsuleImmersiveImageBackdropBitmap(field, 0.60f).asAndroidBitmap()
+        var previousRed = 255
+        for (y in (page.height * 0.60f).toInt() until page.height) {
+            val center = page.getPixel(page.width / 2, y)
+            assertEquals("No residual blue foreground stripe", center, page.getPixel(4, y))
+            assertEquals(center, page.getPixel(page.width - 5, y))
+            val red = center ushr 16 and 255
+            val blue = center and 255
+            assertTrue("Keep red surround", red > blue + 70)
+            assertTrue("No second brightness peak", red <= previousRed)
+            previousRed = red
+        }
+    }
+
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()
