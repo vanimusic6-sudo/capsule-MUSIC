@@ -1778,17 +1778,12 @@ class MainActivity : ComponentActivity() {
                                                 // Move/scale one small nav layer on GPU;
                                                 // no fullscreen blur, snapshot or clock.
                                                 .zIndex(3f)
-                                                .offset {
+                                                .graphicsLayer {
                                                     val hidden = CapsuleMotion.either(
                                                         playerNavTuck,
                                                         1f - navigationBarReveal,
                                                     )
-                                                    IntOffset(
-                                                        x = 0,
-                                                        y = (navSlideDistance * hidden).roundToPx(),
-                                                    )
-                                                }
-                                                .graphicsLayer {
+                                                    translationY = navSlideDistance.toPx() * hidden
                                                     // Restrained suction: phase-locked, no separate bounce.
                                                     scaleX = 1f - 0.025f * playerNavTuck
                                                     scaleY = 1f - 0.07f * playerNavTuck
