@@ -55,6 +55,25 @@ class SimpleEqualizerTest {
         assertFalse(dialog.contains("setOutputGainMb("))
     }
 
+    @Test fun playerMoreKeepsTrackScopedFavoriteAndStudioPreviewControls() {
+        val menu = file("PlayerMenu")
+        val header = File("src/main/kotlin/com/nikhil/yt/ui/component/CapsuleMenuMediaHeader.kt").readText()
+        val service = File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
+        assertTrue(menu.contains("key(mediaMetadata.id)"))
+        assertTrue(menu.contains("database.song(mediaMetadata.id)"))
+        assertTrue(menu.contains("toggleLike(\"player_more\", mediaMetadata)"))
+        assertTrue(menu.contains("CapsuleFavoriteIcon("))
+        assertTrue(header.contains("outer.topStart.toPx(shapeSize, density)"))
+        assertEquals(2, Regex("\\.clip\\(thumbnailShape\\)").findAll(header).count())
+        assertFalse(menu.contains("showListeningNote"))
+        assertFalse(menu.contains("R.string.capsule_studio_final_listening"))
+        assertTrue(menu.contains("previewAmount = profile.copy(effect = effect).setting.amount"))
+        assertTrue(menu.contains("previewAmount = 0"))
+        assertTrue(service.contains("(percent ?: previewAmount)?.let"))
+        assertTrue(service.contains("if (percent == null) profile.copy(effect = effect)"))
+        assertTrue(file("CapsuleEqualizerGraph").contains("pitch * 0.86f"))
+    }
+
     @Test fun manualAndPresetSelectionsAreAtomicAndValidated() {
         val service=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
         val handler=service.substringAfter("fun selectSoundVersion(")
