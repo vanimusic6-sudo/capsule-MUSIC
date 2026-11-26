@@ -315,33 +315,36 @@ internal fun Bitmap.capsuleImmersivePhotoBlur(aspect: Float, landscape: Boolean)
     return Bitmap.createBitmap(result, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
 }
 
-/** The blurred photo is visible only in the transition region, never over the sharp upper stage. */
-internal fun immersiveBlurredPhotoAlpha(fraction: Float): Float {
-    if (!fraction.isFinite()) return 0f
-    fun smooth(value: Float): Float {
-        val t = value.coerceIn(0f, 1f)
-        return t * t * (3f - 2f * t)
-    }
-    return smooth((fraction - 0.30f) / 0.23f) *
-        (1f - smooth((fraction - 0.76f) / 0.24f))
+/** Single C2-continuous fade envelope: no intermediate opacity shelves. */
+private fun immersiveSmootherStep(start: Float, end: Float, value: Float): Float {
+    val t = ((value - start) / (end - start)).coerceIn(0f, 1f)
+    return t * t * t * (t * (t * 6f - 15f) + 10f)
 }
-
-private val stageMaskPositions = floatArrayOf(0f, 0.44f, 0.58f, 0.70f, 0.82f, 1f)
-private val stageMaskOpacity = floatArrayOf(1f, 0.94f, 0.58f, 0.21f, 0.04f, 0f)
 
 internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
     if (!fraction.isFinite()) return 0f
-    val y = fraction.coerceIn(0f, 1f)
-    val stops = stageMaskPositions
-    val alpha = stageMaskOpacity
-    for (i in 1 until stops.size) if (y <= stops[i]) {
-        // Zero slope at each stop: piecewise linear fade created horizontal
-        // band edges on detailed covers. Called only for the cached mask.
-        val p = ((y - stops[i - 1]) / (stops[i] - stops[i - 1])).coerceIn(0f, 1f)
-        val ease = p * p * p * (p * (p * 6f - 15f) + 10f)
-        return alpha[i - 1] + (alpha[i] - alpha[i - 1]) * ease
-    }
-    return 0f
+    return 1f - immersiveSmootherStep(0.34f, 0.88f, fraction)
+}
+
+/** Total contribution of the sharp and blurred artwork over the colour field. */
+internal fun immersivePhotoCombinedAlpha(fraction: Float): Float {
+    if (!fraction.isFinite()) return 0f
+    return 1f - immersiveSmootherStep(0.44f, 1f, fraction)
+}
+
+/**
+ * Derive the underlay mask from the desired combined opacity, rather than
+ * independently fading two overlapping images. Source-over compositing is
+ * sharp + (1 - sharp) * blurred; using that equation avoids a visible shelf
+ * when the sharp image disappears and the blurred image starts fading.
+ */
+internal fun immersiveBlurredPhotoAlpha(fraction: Float): Float {
+    if (!fraction.isFinite() || fraction <= 0.34f || fraction >= 1f) return 0f
+    val sharp = immersivePhotoFeatherAlpha(fraction)
+    val total = immersivePhotoCombinedAlpha(fraction)
+    val remainder = 1f - sharp
+    if (remainder <= 0.000001f) return 1f
+    return ((total - sharp) / remainder).coerceIn(0f, 1f)
 }
 
 private fun gaussianWeights(size: Int, sigma: Float) = FloatArray(size * size).also { weights ->
@@ -471,12 +474,9 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
     val pixels = IntArray(PAINT_WIDTH * PAINT_HEIGHT)
     for (y in 0 until PAINT_HEIGHT) {
         val pageY = (y + 0.5f) / PAINT_HEIGHT
-        // ArchiveTune's continuous lower scrim; no second flat-colour floor.
-        val scrim = when {
-            pageY < 0.38f -> pageY / 0.38f * 0.03f
-            pageY < 0.68f -> 0.03f + (pageY - 0.38f) / 0.30f * 0.11f
-            else -> 0.14f + (pageY - 0.68f) / 0.32f * 0.26f
-        }
+        // Preserve the old darkness at the top, middle and bottom, but
+        // eliminate changes of slope at hard-coded horizontal boundaries.
+        val scrim = 0.40f * Math.pow(pageY.toDouble(), 2.7).toFloat()
         for (x in 0 until PAINT_WIDTH) {
             var pixel = -0x1000000
             for (c in 0..2) {
