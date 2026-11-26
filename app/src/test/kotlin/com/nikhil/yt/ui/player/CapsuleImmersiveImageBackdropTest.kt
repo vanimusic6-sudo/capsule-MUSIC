@@ -34,10 +34,13 @@ class CapsuleImmersiveImageBackdropTest {
             assertTrue("No hard horizontal mask edge", last - alpha < 0.008f)
             last = alpha
         }
-        for (stop in listOf(0.44f, 0.58f, 0.70f, 0.82f)) {
-            assertTrue("Smooth slope at $stop",
-                abs(immersivePhotoFeatherAlpha(stop - 0.001f) -
-                    immersivePhotoFeatherAlpha(stop + 0.001f)) < 0.002f)
+        // Check continuity of the derivative, rather than forcing the old
+        // intermediate stops to have zero slope (which caused opacity shelves).
+        for (stop in listOf(0.34f, 0.44f, 0.58f, 0.70f, 0.82f, 0.88f)) {
+            val middle = immersivePhotoFeatherAlpha(stop)
+            val left = middle - immersivePhotoFeatherAlpha(stop - 0.001f)
+            val right = immersivePhotoFeatherAlpha(stop + 0.001f) - middle
+            assertTrue("Smooth slope at $stop", abs(left - right) < 0.0002f)
         }
     }
 
@@ -267,9 +270,24 @@ class CapsuleImmersiveImageBackdropTest {
         assertTrue(variation(160) <= variation(45))
         assertTrue(variation(160) < 30)
         assertEquals(0f, immersiveBlurredPhotoAlpha(0f), 0f)
-        assertTrue(immersiveBlurredPhotoAlpha(0.60f) > 0.95f)
+        assertTrue(immersiveBlurredPhotoAlpha(0.60f) > 0.60f)
         assertEquals(0f, immersiveBlurredPhotoAlpha(1f), 0f)
         assertEquals(0f, immersiveBlurredPhotoAlpha(Float.NaN), 0f)
+    }
+
+    @Test fun sharpAndBlurredLayersShareOneMonotonicOpticalEnvelope() {
+        var previous = 1f
+        for (i in 0..1000) {
+            val y = i / 1000f
+            val sharp = immersivePhotoFeatherAlpha(y)
+            val blur = immersiveBlurredPhotoAlpha(y)
+            val combined = sharp + (1f - sharp) * blur
+            assertEquals(immersivePhotoCombinedAlpha(y), combined, 0.00001f)
+            assertTrue("No opacity rebound at $y", combined <= previous + 0.00001f)
+            assertTrue("No optical step at $y", previous - combined < 0.004f)
+            previous = combined
+        }
+        assertEquals(0f, previous, 0.00001f)
     }
 
     private fun preview(bitmap: Bitmap, name: String) {
