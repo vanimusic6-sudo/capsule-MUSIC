@@ -51,22 +51,12 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
-import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
-import com.nikhil.yt.ui.component.playerMiniMaterialAlpha
-import com.nikhil.yt.ui.component.playerMiniBadgeAlpha
-import com.nikhil.yt.ui.component.playerMiniDrawAlpha
-import com.nikhil.yt.ui.component.playerLayerAlpha
-import com.nikhil.yt.ui.component.playerArtworkEndpoint
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -704,45 +694,8 @@ internal fun MiniPlayerSurface(
     } else {
         CapsuleMiniText
     }
-    val transition = LocalPlayerArtworkMotion.current
-    val backgroundClockEnabled by remember(transition) {
-        derivedStateOf { transition == null || transition.progress <= 0f }
-    }
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val surface = MaterialTheme.colorScheme.surface
-    val light = LocalCapsuleLightTheme.current
-    val tokens = capsuleLightCompactTokens(MaterialTheme.colorScheme)
-    val first = colors.getOrElse(0) { primary }
-    val second = colors.getOrElse(1) { secondary }
-    // Glass samples the underlying app and cannot be stretched to a full-page
-    // blur. Use an opaque palette-compatible bridge instead. The real glass
-    // and all other selected styles are retained unchanged at the dock.
-    val material = when (style) {
-        MiniPlayerBackgroundStyle.THEME -> when {
-            pureBlack -> Color.Black to Color.Black
-            light -> tokens.surfaceStart to tokens.surfaceEnd
-            else -> lerp(surface, primary, 0.12f) to lerp(surface, Color.Black, 0.30f)
-        }
-        MiniPlayerBackgroundStyle.GRADIENT -> lerp(first, Color.Black, 0.43f) to lerp(second, Color.Black, 0.48f)
-        MiniPlayerBackgroundStyle.COLOR_FLOW -> lerp(first, Color.Black, 0.40f) to lerp(second, Color.Black, 0.48f)
-        MiniPlayerBackgroundStyle.CAPSULE_STAR -> lerp(first, Color.Black, 0.64f) to lerp(second, Color.Black, 0.70f)
-        MiniPlayerBackgroundStyle.NEBULA -> lerp(first, Color.Black, 0.55f) to lerp(second, Color.Black, 0.63f)
-        MiniPlayerBackgroundStyle.CAPSULE_GLOW -> lerp(first, Color.Black, 0.50f) to lerp(second, Color.Black, 0.65f)
-        MiniPlayerBackgroundStyle.GLASS -> lerp(surface, first, 0.19f) to lerp(surface, second, 0.12f)
-    }
-    SideEffect {
-        transition?.compactMaterial = material.first.copy(alpha = 1f) to material.second.copy(alpha = 1f)
-    }
     Box(modifier) {
         val materialModifier = Modifier.matchParentSize()
-            .graphicsLayer {
-                alpha = transition?.let {
-                    val p = it.progress
-                    val outer = playerMiniDrawAlpha(p)
-                    playerLayerAlpha(playerMiniMaterialAlpha(p), outer)
-                } ?: 1f
-            }
         if (style == MiniPlayerBackgroundStyle.GLASS) {
             CapsuleGlassSurface(
                 colors = colors,
@@ -756,7 +709,7 @@ internal fun MiniPlayerSurface(
                 pureBlack = pureBlack,
                 colors = colors,
                 modifier = materialModifier,
-                animated = animated && backgroundClockEnabled,
+                animated = animated,
             )
         }
         CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
@@ -880,8 +833,6 @@ private fun CapsuleMiniPlayButton(
     interactionEnabled: Boolean = true,
 ) {
     val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
-    var decodedMini by remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) { mutableStateOf<Painter?>(null) }
-    val artworkMotion = LocalPlayerArtworkMotion.current
 
     Box(
         contentAlignment =
@@ -932,8 +883,6 @@ private fun CapsuleMiniPlayButton(
                 model =
                     mediaMetadata
                         ?.thumbnailUrl,
-                onSuccess = { decodedMini = it.painter },
-                onError = { decodedMini = null },
                 contentDescription =
                     null,
                 contentScale =
@@ -941,9 +890,7 @@ private fun CapsuleMiniPlayButton(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .clip(CircleShape)
-                        .playerArtworkEndpoint(mediaMetadata?.id, decodedMini, mini = true,
-                            radius = if (standardStyle) 20.dp else 22.dp, parentOwnsOpacity = true),
+                        .clip(CircleShape),
             )
 
             if (
@@ -957,9 +904,7 @@ private fun CapsuleMiniPlayButton(
                         .background(
                             Color.Black.copy(alpha = 0.4f),
                             CircleShape,
-                        ).graphicsLayer {
-                            alpha = artworkMotion?.let { playerMiniBadgeAlpha(it.progress) } ?: 1f
-                        },
+                        ),
                 )
 
                 Icon(
@@ -979,9 +924,7 @@ private fun CapsuleMiniPlayButton(
                     tint =
                         Color.White,
                     modifier =
-                        Modifier.size(20.dp).graphicsLayer {
-                            alpha = artworkMotion?.let { playerMiniBadgeAlpha(it.progress) } ?: 1f
-                        },
+                        Modifier.size(20.dp),
                 )
             }
         }
