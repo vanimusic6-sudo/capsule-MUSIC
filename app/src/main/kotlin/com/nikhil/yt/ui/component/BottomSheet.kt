@@ -349,6 +349,8 @@ fun BottomSheet(
     surfaceAlpha: (Float) -> Float = ::playerContainerAlpha,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit = {},
+    playerAtomicScene: Boolean = false,
+    playerSharedArtwork: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     if (state.playerMotion) {
@@ -357,6 +359,7 @@ fun BottomSheet(
             backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
             collapsedHorizontalInset, collapsedTopCornerRadius,
             collapsedContent, backgroundContent, content,
+            atomicScene = playerAtomicScene, sharedArtwork = playerSharedArtwork,
         )
         return
     }
