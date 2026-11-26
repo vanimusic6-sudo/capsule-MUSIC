@@ -30,8 +30,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 480f
-internal const val PLAYER_CLOSE_STIFFNESS = 580f
+internal const val PLAYER_OPEN_STIFFNESS = 390f
+internal const val PLAYER_CLOSE_STIFFNESS = 490f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -105,18 +105,25 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.45f
-internal fun playerNavigationTuck(progress: Float): Float = window(progress, 0.005f, 0.27f)
+internal const val PLAYER_MINI_FADE_END = 0.38f
+internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0f, 0.32f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - window(progress, 0.08f, PLAYER_MINI_FADE_END)
+    1f - playerSoftPhase(progress, 0.035f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float = if (boundedProgress(progress) > 0f) 1f else 0f
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 // The shell is opaque; only incoming foreground fades in. The shared cover
 // draws above this layer, so its pixels never inherit a second opacity.
-internal fun playerContentOpacity(progress: Float): Float {
-    val t = window(progress, 0.10f, 0.45f)
+internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
+    val t = playerPhase(progress, start, end)
     return t * t * (3f - 2f * t)
 }
+
+// Opacity phases have soft endpoints, but geometry follows the physical progress.
+// The compact material turns into the real destination, not a second moving card.
+internal fun playerMaterialReveal(progress: Float): Float = playerSoftPhase(progress, 0.025f, 0.34f)
+internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.015f, 0.20f)
+internal fun playerAtomicSceneAlpha(progress: Float): Float = playerSoftPhase(progress, 0.08f, 0.60f)
+internal fun playerContentOpacity(progress: Float): Float = playerSoftPhase(progress, 0.12f, 0.56f)
 
 // Reuse the visible release pulse instead of a subpixel vibration.
 internal fun playerMiniLift(progress: Float, density: Float): Float = 0f
@@ -129,7 +136,7 @@ internal fun playerPresentationContentY(
     progress: Float, frameTop: Float, density: Float,
 ): Float {
     if (!frameTop.isFinite() || !density.isFinite() || density <= 0f) return 0f
-    return minOf(frameTop.coerceAtLeast(0f) * 0.12f, 22f * density) * (1f - boundedProgress(progress))
+    return minOf(frameTop.coerceAtLeast(0f) * 0.07f, 14f * density) * (1f - boundedProgress(progress))
 }
 
 /**
@@ -159,9 +166,9 @@ internal fun playerPresentationBounds(
     val sourceTop = miniTop.coerceIn(0f, height)
     val sourceBottom = (sourceTop + miniHeight).coerceIn(sourceTop, height)
     return Rect(
-        left = leftInset * (1f - window(p, 0f, 0.60f)),
+        left = leftInset * (1f - p),
         top = sourceTop * (1f - p),
-        right = width - rightInset * (1f - window(p, 0f, 0.60f)),
+        right = width - rightInset * (1f - p),
         bottom = sourceBottom + (height - sourceBottom) * p,
     )
 }
@@ -227,8 +234,8 @@ internal data class PlayerFrameContour(
 /** The mini's round corners follow the growing frame, then disappear outside the viewport. */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = (miniRadius + (maxOf(miniRadius, 22f * density) - miniRadius) * window(p, 0f, 0.22f)) *
-        (1f - window(p, 0.76f, 1f))
+    val radius = (miniRadius + (maxOf(miniRadius, 22f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.30f)) *
+        (1f - playerSoftPhase(p, 0.78f, 1f))
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
