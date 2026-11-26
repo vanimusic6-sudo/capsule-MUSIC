@@ -158,6 +158,8 @@ internal fun capsuleImmersiveDominantGround(field: CapsuleColorField): Color? {
     val borderBuckets = IntArray(4096)
     val edge = BooleanArray(field.cells.size)
     var edgeCount = 0
+    val rim = IntArray(field.cells.size)
+    val rimTotals = IntArray(3)
     fun bucket(c: Color): Int =
         ((c.red * 15f + 0.5f).toInt().coerceIn(0, 15) shl 8) or
             ((c.green * 15f + 0.5f).toInt().coerceIn(0, 15) shl 4) or
@@ -168,6 +170,16 @@ internal fun capsuleImmersiveDominantGround(field: CapsuleColorField): Color? {
         val isEdge = x < (field.width / 6).coerceAtLeast(1) ||
             x >= field.width - (field.width / 6).coerceAtLeast(1) ||
             y >= field.height * 3 / 4 || y < field.height / 8
+        // Narrow upper border zones catch a studio backdrop behind a large
+        // central subject even when the subject covers most of the image.
+        val zone = when {
+            y < (field.height / 8).coerceAtLeast(1) -> 1
+            y < field.height * 3 / 5 && x < (field.width / 12).coerceAtLeast(1) -> 2
+            y < field.height * 3 / 5 && x >= field.width - (field.width / 12).coerceAtLeast(1) -> 3
+            else -> 0
+        }
+        rim[index] = zone
+        if (zone > 0) rimTotals[zone - 1]++
         val key = bucket(c)
         buckets[key]++
         if (isEdge) {
@@ -186,18 +198,24 @@ internal fun capsuleImmersiveDominantGround(field: CapsuleColorField): Color? {
         val b = (key and 15) / 15f
         var count = 0
         var border = 0
+        val rimMatches = IntArray(3)
         var sumR = 0f; var sumG = 0f; var sumB = 0f
         for ((index, c) in field.cells.withIndex()) {
             val dr = c.red - r; val dg = c.green - g; val db = c.blue - b
             if (dr * dr + dg * dg + db * db > 0.0196f) continue
             count++
             if (edge[index]) border++
+            if (rim[index] > 0) rimMatches[rim[index] - 1]++
             sumR += c.red; sumG += c.green; sumB += c.blue
         }
         val coverage = count.toFloat() / field.cells.size
         val edgeCoverage = border.toFloat() / edgeCount.coerceAtLeast(1)
-        if (coverage < 0.55f || edgeCoverage < 0.70f) continue
-        val score = coverage + 2f * edgeCoverage
+        val broad = coverage >= 0.55f && edgeCoverage >= 0.70f
+        val framed = coverage >= 0.20f && rimTotals.indices.all { i ->
+            rimTotals[i] > 0 && rimMatches[i].toFloat() / rimTotals[i] >= 0.65f
+        }
+        if (!broad && !framed) continue
+        val score = coverage + 2f * edgeCoverage + if (framed) 1f else 0f
         if (score > bestScore) {
             bestScore = score
             best = Color(sumR / count, sumG / count, sumB / count)
@@ -431,11 +449,12 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
         val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
         val edgeColor = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
-        val t = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+        // Let the real surrounding hue emerge under the photo fade, not
+        // only after the controls begin. Keep ambiguous/multicolour images intact.
+        val onset = stage * 0.66f
+        val t = ((pageY - onset) / (1f - onset)).coerceIn(0f, 1f)
         val mix = t * t * (3f - 2f * t)
-        // Only strongly supported single-colour artwork receives the solid floor.
-        // Multicolour artwork retains its left/right photographic diffusion.
-        val color = if (ground != null) lerp(edgeColor, ground, mix * 0.92f) else edgeColor
+        val color = if (ground != null) lerp(edgeColor, ground, mix * 0.94f) else edgeColor
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }
