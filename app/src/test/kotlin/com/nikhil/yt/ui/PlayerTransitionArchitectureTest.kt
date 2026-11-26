@@ -102,30 +102,26 @@ class PlayerTransitionArchitectureTest {
         assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
     }
 
-    @Test fun playerUsesOneLiveSceneWithoutSyntheticMaterialOrMovingArtwork() {
+    @Test fun playerUsesOneOpaqueSheetWithNativeContentAndStationaryDock() {
         val main = source("com/nikhil/yt/MainActivity.kt")
         val sheet = source("com/nikhil/yt/ui/component/BottomSheet.kt")
         val window = source("com/nikhil/yt/ui/component/PlayerWindow.kt")
         val mini = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
-        val light = source("com/nikhil/yt/ui/player/CapsuleTrackArtworkHandoff.kt")
-        val immersion = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertTrue(main.contains("classicPlayerPresentation = false"))
         assertTrue(sheet.contains("if (state.playerMotion) {"))
-        assertTrue(window.contains("alpha = playerPresentationOpacity(p)"))
-        assertTrue(window.contains("playerSceneTravelDp(p).dp.toPx()"))
-        assertTrue(window.contains("val scale = playerPresentationScale(p)"))
+        assertTrue(window.contains("translationY = playerSheetOffsetPx(p, size.height)"))
         assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = backgroundContent)"))
         assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = content)"))
+        assertFalse(window.contains("alpha = playerPresentationOpacity"))
+        assertFalse(window.contains("scaleX ="))
+        assertFalse(window.contains("scaleY ="))
         assertFalse(window.contains("PlayerWindowShape("))
         assertFalse(window.contains("PlayerArtworkMotion("))
-        assertFalse(window.contains("drawWithCache"))
         assertFalse(window.contains("Brush.horizontalGradient"))
-        assertFalse(window.contains("artwork.draw("))
         assertFalse(mini.contains(".playerArtworkEndpoint("))
-        assertFalse(light.contains(".playerArtworkEndpoint("))
-        assertFalse(immersion.contains(".playerArtworkEndpoint("))
-        assertFalse(mini.contains("compactMaterial"))
-        assertFalse(mini.contains("playerMiniBadgeAlpha("))
+        assertTrue(player.contains("foregroundAlpha = { 1f }"))
+        assertFalse(main.contains("playerNavTuck"))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
