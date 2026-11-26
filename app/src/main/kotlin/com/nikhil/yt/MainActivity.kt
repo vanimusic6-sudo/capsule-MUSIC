@@ -226,6 +226,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
+import com.nikhil.yt.ui.component.playerNavigationTuck
 import com.nikhil.yt.ui.component.playerSceneShouldInterceptTouch
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
@@ -910,27 +911,14 @@ class MainActivity : ComponentActivity() {
                             classicPlayerPresentation = true,
                         )
 
-                    // The compact nav's departure is a SHORT suction gesture, not
-                    // a passenger on the full player's long anchored travel.
-                    val playerNavTuckTarget by remember(playerBottomSheetState) {
+                    // No second clock: navigation departs in the early phase of the
+                    // same player progress and returns in its exact reverse order.
+                    val playerNavTuck by remember(playerBottomSheetState) {
                         derivedStateOf {
-                            CapsuleMotion.navigationTucked(
-                                opening = playerBottomSheetState.isExpandedOrExpanding,
-                                compactPressed = playerBottomSheetState.compactOpenPress,
-                                progress = playerBottomSheetState.visualProgress,
-                                dismissed = playerBottomSheetState.isDismissed,
-                            )
+                            if (playerBottomSheetState.isDismissed) 0f
+                            else playerNavigationTuck(playerBottomSheetState.visualProgress)
                         }
                     }
-                    val playerNavTuck by animateFloatAsState(
-                        targetValue = if (playerNavTuckTarget) 1f else 0f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = if (playerNavTuckTarget) 640f else 520f,
-                            visibilityThreshold = 0.005f,
-                        ),
-                        label = "capsule-nav-player-tuck",
-                    )
 
                     val playerBackAction = remember { PlayerBackAction() }
                     val playerOwnsBack by remember(playerBottomSheetState) {
@@ -1801,15 +1789,9 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                                 .graphicsLayer {
-                                                    val returning = !playerNavTuckTarget
-                                                    // Just one tiny up-stretch as the bar comes back above
-                                                    // the screen edge; settled states are exactly 1f.
-                                                    val rebound = if (returning)
-                                                        CapsuleMotion.navReturnStretch(playerNavTuck)
-                                                    else 1f
-                                                    scaleX = CapsuleMotion.navTuckScaleX(playerNavTuck) /
-                                                        (1f + (rebound - 1f) * 0.22f)
-                                                    scaleY = CapsuleMotion.navTuckScaleY(playerNavTuck) * rebound
+                                                    // Restrained suction: phase-locked, no separate bounce.
+                                                    scaleX = 1f - 0.025f * playerNavTuck
+                                                    scaleY = 1f - 0.07f * playerNavTuck
                                                     transformOrigin = TransformOrigin(0.5f, 1f)
                                                 },
                                     ) {
