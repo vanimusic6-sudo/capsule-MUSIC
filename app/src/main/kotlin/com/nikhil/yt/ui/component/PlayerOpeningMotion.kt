@@ -19,7 +19,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.hideFromAccessibility
@@ -72,7 +71,7 @@ internal fun playerPhase(progress: Float, start: Float, end: Float): Float =
 private fun window(progress: Float, start: Float, end: Float): Float =
     playerPhase(progress, start, end)
 
-/** The app stays stationary; a restrained shadow gives the arriving surface depth. */
+/** Home is never transformed or shaded: keep glass sampling and dock coordinates stable. */
 internal fun playerSceneDim(progress: Float): Float = 0f
 // Backdrop is sampled by the glass Mini. Scaling Home shifts that capture.
 internal fun playerSceneScale(progress: Float): Float = 1f
@@ -82,11 +81,7 @@ internal fun playerFrameShadowDp(progress: Float): Float {
 }
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
-/**
- * The visible frame is a true mini-card -> fullscreen container transform. The page stays in
- * its final layout; only its GPU outline and a uniformly scaled content layer move.
- * No bitmap snapshot, placeholder plate, second colour field or stretched artwork.
- */
+/** The destination is visible only within the whole-scene optical envelope. */
 internal fun playerPageVisible(progress: Float): Boolean = playerPresentationOpacity(progress) > 0f
 internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.92f
 
@@ -110,7 +105,7 @@ internal const val PLAYER_MINI_FADE_END = 1f
 internal fun playerNavigationTuck(progress: Float): Float = playerPresentationOpacity(progress)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
     if (boundedProgress(progress) < 1f) 1f else 0f
-// The tail is a real compact material handoff, not an opaque sheet sinking behind Mini.
+// One optical envelope for the complete, live destination scene.
 internal fun playerPresentationOpacity(progress: Float): Float = playerPhase(progress, 0.025f, 0.94f)
 internal fun playerSceneTravelDp(progress: Float): Float = 28f * (1f - boundedProgress(progress))
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
@@ -216,11 +211,6 @@ internal fun PlayerSceneBackdrop(
 ) {
     Box(
         modifier.fillMaxSize()
-            .graphicsLayer {
-                val scale = playerSceneScale(progress())
-                scaleX = scale
-                scaleY = scale
-            }
             // Keep the modifier/node topology stable while semantics queries force remeasure.
             .semantics { if (blocked) hideFromAccessibility() }
             // A passive pointerInput node still participates in hit-testing. Remove the
