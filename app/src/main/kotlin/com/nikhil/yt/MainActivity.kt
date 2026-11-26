@@ -906,9 +906,8 @@ class MainActivity : ComponentActivity() {
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
                             playerMotion = true,
-                            // Restore the main-branch moving BottomSheet; keep the newer
-                            // Back/lifetime/velocity safeguards and all current player features.
-                            classicPlayerPresentation = true,
+                            // A single dedicated player window owns the container transform.
+                            classicPlayerPresentation = false,
                         )
 
                     // No second clock: navigation departs in the early phase of the
