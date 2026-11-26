@@ -1,4 +1,4 @@
-/* Capsule MUSIC — bounded container transform. GPL-3.0. */
+/* Capsule MUSIC — shared-axis player scene. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
@@ -20,28 +20,25 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
 /**
- * Material-style container transform: one real compact card, one clipped
- * destination with stable layout, and one track-scoped shared artwork.
- * The anchor owns position and velocity; the renderer has no second clock.
+ * One live, full-size scene arrives over the stationary dock and home screen.
+ * Its real background, cover, text, buttons and video share one transform.
+ * No growing colored plate, moving replica, cached dock geometry, or
+ * per-element animation. No synthetic material is drawn at any progress.
  */
 @Composable
 internal fun PlayerWindow(
@@ -57,25 +54,19 @@ internal fun PlayerWindow(
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
-    atomicScene: Boolean = false,
-    sharedArtwork: Boolean = true,
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
     val insets = WindowInsets.systemBars
-    val layoutDirection = LocalLayoutDirection.current
+    val direction = LocalLayoutDirection.current
     val localDensity = LocalDensity.current
-    val leftInset = with(localDensity) { miniInset.toPx() } + insets.getLeft(localDensity, layoutDirection)
-    val rightInset = with(localDensity) { miniInset.toPx() } + insets.getRight(localDensity, layoutDirection)
-    val artwork = remember(state) { PlayerArtworkMotion(state) }
-    SideEffect { artwork.sharedArtworkEnabled = sharedArtwork && !atomicScene }
+    val leftInset = with(localDensity) { miniInset.toPx() } + insets.getLeft(localDensity, direction)
+    val rightInset = with(localDensity) { miniInset.toPx() } + insets.getRight(localDensity, direction)
     val interaction = remember(state) { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
     LaunchedEffect(state, pressed, compactInteractive) {
         state.setCompactOpenPress(pressed && compactInteractive)
     }
-    // Keep the real dock and the sampled glass pixels in the same coordinate space.
-    // Press still prewarms the page; scaling a captured backdrop produced a shifted ghost.
     val renderPage by remember(state) { derivedStateOf {
         !state.isDismissed && (state.isExpandedOrExpanding || state.isAnimationRunning ||
             state.compactOpenPress || playerPageVisible(state.visualProgress))
@@ -91,154 +82,86 @@ internal fun PlayerWindow(
         state.isExpandedOrExpanding && playerPageAcceptsInput(state.visualProgress)
     } }
     val intercept by remember(state) { derivedStateOf {
-        playerSceneShouldInterceptTouch(
-            state.visualProgress, state.isExpandedOrExpanding, state.isDismissed)
+        playerSceneShouldInterceptTouch(state.visualProgress, state.isExpandedOrExpanding, state.isDismissed)
     } }
-    // Only the eligibility/identity changes cause a write. No per-frame bitmap
-    // allocation, independent animation or image request belongs to the bridge.
-    LaunchedEffect(artwork, state) {
-        snapshotFlow {
-            val p = state.visualProgress
-            val phase = when { p <= 0f -> 0; p <= 0.07f -> 1; p < 0.985f -> 2; p < 1f -> 3; else -> 4 }
-            listOf(artwork.matchingId(), phase, state.isAnimationRunning,
-                state.isExpandedOrExpanding, state.compactOpenPress, state.isDismissed)
-        }.collect { artwork.reconcile() }
-    }
 
     if (backHandlerEnabled && state.isExpandedOrExpanding) BackHandler(onBack = state::collapseSoft)
 
-    CompositionLocalProvider(LocalPlayerArtworkMotion provides artwork) {
-        Box(
-            modifier.fillMaxSize().clipToBounds()
-                .onGloballyPositioned {
-                    artwork.root = it
-                    artwork.recordDockGeometry()
-                }
-                .then(if (intercept) Modifier.pointerInput(state, leftInset, rightInset, miniHeight) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        val p = state.visualProgress
-                        val dockTop = (state.expandedBound - state.collapsedBound).toPx()
-                        val compactHit = state.compactForegroundAcceptsInput &&
-                            down.position.x in leftInset..(size.width - rightInset) &&
-                            down.position.y in dockTop..(dockTop + miniHeight.toPx())
-                        if (!compactHit && (!state.isExpandedOrExpanding || !playerPageAcceptsInput(p))) {
-                            down.consume()
-                            do {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                event.changes.forEach { it.consume() }
-                            } while (event.changes.any { it.pressed })
-                        }
-                    }
-                } else Modifier),
-        ) {
-            if (renderPage) {
-                key("capsule-player-window") {
-                    Box(
-                        Modifier.fillMaxSize().zIndex(1f)
-                            .semantics { if (!pageAccessible) hideFromAccessibility() }
-                            .graphicsLayer {
-                                val p = state.visualProgress
-                                val frame = playerPresentationBounds(p, size.width, size.height,
-                                    size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
-                                val contour = playerPageContour(p, miniRadius.toPx(), density)
-                                shape = if (p >= 1f) RectangleShape else PlayerWindowShape(frame, contour.radius, 0f)
-                                clip = p < 1f
-                                shadowElevation = playerFrameShadowDp(p).dp.toPx() * playerPresentationOpacity(p)
-                                // Fade the shell out before the dock handoff; never leave a colored tail.
-                                alpha = playerPresentationOpacity(p)
-                            }
-                            .drawWithContent { if (pageDraws) drawContent() },
-                    ) {
-                        CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides pageDraws) {
-                            Box(
-                                Modifier.fillMaxSize().drawWithCache {
-                                    val material = artwork.compactMaterial
-                                    val bridge = material?.let {
-                                        Brush.horizontalGradient(listOf(it.first, it.second))
-                                    }
-                                    onDrawWithContent {
-                                        // Keep the same base underneath for the whole trip;
-                                        // the destination fades over it, not through a third color.
-                                        if (state.visualProgress < 1f && bridge != null) drawRect(bridge)
-                                        else drawRect(backgroundColor)
-                                        drawContent()
-                                        // The moving cover belongs to the material layer,
-                                        // not a topmost overlay over the entire player UI.
-                                        val p = state.visualProgress
-                                        if (p > 0f && p < 1f) {
-                                            val frame = playerPresentationBounds(p, size.width, size.height,
-                                                size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
-                                            artwork.draw(this, frame, playerPageContour(p, miniRadius.toPx(), density).radius)
-                                        }
-                                    }
-                                }
-                                    .then(if (intercept) Modifier.pointerInput(state) {
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            down.consume()
-                                            do {
-                                                val event = awaitPointerEvent()
-                                                event.changes.forEach { it.consume() }
-                                            } while (event.changes.any { it.pressed })
-                                        }
-                                    } else Modifier),
-                                content = {
-                                    if (!atomicScene) Box(Modifier.fillMaxSize().graphicsLayer {
-                                        alpha = playerMaterialReveal(state.visualProgress)
-                                    }.background(backgroundColor), content = backgroundContent)
-                                },
-                            )
-                            // Keep actual text, controls and photo in their final layout.
-                            // A modest translation gives depth without sliding an entire
-                            // screen-length canvas out of the compact card.
-                            Box(
-                                Modifier.fillMaxSize().graphicsLayer {
-                                    val p = state.visualProgress
-                                    val frame = playerPresentationBounds(p, size.width, size.height,
-                                        size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
-                                    // Full-bleed photographs reveal from their TOP, not
-                                    // through a moving crop of their lower half. Light keeps
-                                    // the destination measured at its actual final position.
-                                    translationY = if (atomicScene) playerAtomicContentY(frame.top) else 0f
-                                    alpha = if (atomicScene) playerAtomicSceneAlpha(p) else artwork.foregroundOpacity()
-                                },
-                                content = content,
-                            )
-                        }
+    Box(
+        modifier.fillMaxSize().clipToBounds()
+            .then(if (intercept) Modifier.pointerInput(state, leftInset, rightInset, miniHeight) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val p = state.visualProgress
+                    val dockTop = (state.expandedBound - state.collapsedBound).toPx()
+                    val compactHit = state.compactForegroundAcceptsInput &&
+                        down.position.x in leftInset..(size.width - rightInset) &&
+                        down.position.y in dockTop..(dockTop + miniHeight.toPx())
+                    if (!compactHit && (!state.isExpandedOrExpanding || !playerPageAcceptsInput(p))) {
+                        down.consume()
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            event.changes.forEach { it.consume() }
+                        } while (event.changes.any { it.pressed })
                     }
                 }
+            } else Modifier),
+    ) {
+        // The original dock stays underneath the incoming scene, at its real
+        // position and size. Glass therefore never moves a sampled backdrop.
+        if (onDismiss == null || !state.isDismissed) {
+            Box(
+                Modifier
+                    .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
+                    .fillMaxWidth().height(miniHeight)
+                    .graphicsLayer {
+                        translationY = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
+                    }
+                    .semantics { if (!compactInteractive) hideFromAccessibility() }
+                    .then(if (compactSwipeDismissEnabled && onDismiss != null && compactInteractive)
+                        Modifier.bottomSheetDraggable(
+                            state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
+                            miniGestureArbiter = arbiter, compactDismissOnly = true,
+                        ) else Modifier)
+                    .then(if (compactInteractive) Modifier.clickable(
+                        interactionSource = interaction, indication = null, onClick = state::expandSoft,
+                    ) else Modifier)
+                    .drawWithContent { if (sourceDraws) drawContent() },
+            ) {
+                CompositionLocalProvider(
+                    LocalCapsuleBackgroundMotionEnabled provides sourceClock,
+                    LocalMiniPlayerGestureArbiter provides arbiter,
+                ) { collapsedContent() }
             }
-            if (onDismiss == null || !state.isDismissed) {
+        }
+
+        if (renderPage) {
+            key("capsule-player-window") {
                 Box(
-                    Modifier.zIndex(2f)
-                        // Position BEFORE input modifiers so the tap and swipe hit
-                        // targets coincide with the actual dock, including dismissal.
-                        .offset {
-                            IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx())
-                        }
-                        .fillMaxWidth().height(miniHeight)
+                    Modifier.fillMaxSize().zIndex(1f)
+                        .semantics { if (!pageAccessible) hideFromAccessibility() }
+                        // An invisible full-size layer must not steal the dock's
+                        // hit targets. Disable its pointer tree at compact rest.
                         .graphicsLayer {
                             val p = state.visualProgress
-                            val dismiss = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
-                            translationY = dismiss
-                            alpha = playerMiniDrawAlpha(p)
+                            alpha = playerPresentationOpacity(p)
+                            translationY = playerSceneTravelDp(p).dp.toPx()
+                            val scale = playerPresentationScale(p)
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0.5f, 1f)
                         }
-                        .semantics { if (!compactInteractive) hideFromAccessibility() }
-                        .then(if (compactSwipeDismissEnabled && onDismiss != null && compactInteractive)
-                            Modifier.bottomSheetDraggable(
-                                state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
-                                miniGestureArbiter = arbiter, compactDismissOnly = true,
-                            ) else Modifier)
-                        .then(if (compactInteractive) Modifier.clickable(
-                            interactionSource = interaction, indication = null, onClick = state::expandSoft,
-                        ) else Modifier)
-                        .drawWithContent { if (sourceDraws) drawContent() },
+                        .drawWithContent { if (pageDraws) drawContent() },
                 ) {
-                    CompositionLocalProvider(
-                        LocalCapsuleBackgroundMotionEnabled provides sourceClock,
-                        LocalMiniPlayerGestureArbiter provides arbiter,
-                    ) { collapsedContent() }
+                    // Exactly one opaque scene beneath the outer opacity. All
+                    // styles, photos, blur and controls retain native layout.
+                    CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides
+                        (pageDraws && !state.isAnimationRunning)) {
+                        Box(Modifier.fillMaxSize().background(backgroundColor)) {
+                            Box(Modifier.fillMaxSize(), content = backgroundContent)
+                            Box(Modifier.fillMaxSize(), content = content)
+                        }
+                    }
                 }
             }
         }
