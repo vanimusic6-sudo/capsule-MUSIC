@@ -252,8 +252,8 @@ class PlayerOpeningMotionTest {
             previous = contour
         }
         val halfway = playerPresentationBounds(0.5f, 360f, 700f, 590f, 48f, 12f)
-        assertTrue("the frame is already shrinking rather than fading as a full-screen panel",
-            halfway.top > 295f)
+        assertEquals("the frame follows the actual anchor without extra deformation",
+            295f, halfway.top, 0.001f)
         assertTrue("the actual Mini is present during the close handoff",
             playerMiniDrawAlpha(0.5f) > 0f)
     }
@@ -281,7 +281,7 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
         assertEquals(1f, playerPresentationOpacity(2f), 0f)
         assertEquals(1f, playerPresentationScale(1f), 0f)
-        assertEquals(0.975f, playerPresentationScale(0f), 0f)
+        assertEquals(0.99f, playerPresentationScale(0f), 0f)
         assertEquals(0f, playerPresentationContentY(1f, 0f, 1f), 0f)
 
         val source = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
@@ -321,7 +321,7 @@ class PlayerOpeningMotionTest {
                 with(compose.density) { 700.dp.toPx() }, with(compose.density) { 590.dp.toPx() },
                 with(compose.density) { 48.dp.toPx() }, with(compose.density) { 12.dp.toPx() })
             assertEquals("content follows its clipped, physical source", frame.top -
-                with(compose.density) { 24.dp.toPx() } * (1f - p), a.y, 2f)
+                with(compose.density) { 10.dp.toPx() } * (1f - p), a.y, 2f)
             val poster = rawBounds("poster")
             assertEquals(with(compose.density) { 180.dp.toPx() } * actualScale, poster.width, 2f)
             assertEquals("cover stays attached to its moving content",
