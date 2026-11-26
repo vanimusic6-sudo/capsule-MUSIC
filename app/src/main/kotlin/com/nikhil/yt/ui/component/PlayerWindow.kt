@@ -1,4 +1,4 @@
-/* Capsule MUSIC — shared-axis player scene. GPL-3.0. */
+/* Capsule MUSIC — opaque anchored player sheet. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -35,10 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
 /**
- * One live, full-size scene arrives over the stationary dock and home screen.
- * Its real background, cover, text, buttons and video share one transform.
- * No growing colored plate, moving replica, cached dock geometry, or
- * per-element animation. No synthetic material is drawn at any progress.
+ * A single opaque native player surface rises from the bottom of the viewport.
+ * The real dock and navigation stay in place behind it. No alpha, scaling,
+ * intermediate palette, independent artwork geometry or second motion clock.
+ * The full page is measured once; only its layer's vertical position changes.
  */
 @Composable
 internal fun PlayerWindow(
@@ -114,7 +114,7 @@ internal fun PlayerWindow(
         // position and size. Glass therefore never moves a sampled backdrop.
         if (onDismiss == null || !state.isDismissed) {
             Box(
-                Modifier.zIndex(if (compactInteractive) 2f else 0f)
+                Modifier.zIndex(0f)
                     .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
                     .fillMaxWidth().height(miniHeight)
                     .graphicsLayer {
@@ -147,20 +147,16 @@ internal fun PlayerWindow(
                         // hit targets. Disable its pointer tree at compact rest.
                         .graphicsLayer {
                             val p = state.visualProgress
-                            alpha = playerPresentationOpacity(p)
-                            // An invisible composed page is prepared off-screen, not
-                            // hit-testable over Home or the dock during the spring tail.
-                            translationY = if (alpha > 0f) playerSceneTravelDp(p).dp.toPx()
-                                else size.height
-                            val scale = playerPresentationScale(p)
-                            scaleX = scale
-                            scaleY = scale
-                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            translationY = playerSheetOffsetPx(p, size.height)
+                            // The edge has a modest native radius, released only
+                            // near the fullscreen anchor. Content never stretches.
+                            val corner = playerSheetCornerDp(p).dp
+                            shape = RoundedCornerShape(topStart = corner, topEnd = corner)
+                            clip = p < 1f
                         }
                         .drawWithContent { if (pageDraws) drawContent() },
                 ) {
-                    // Exactly one opaque scene beneath the outer opacity. All
-                    // styles, photos, blur and controls retain native layout.
+                    // One opaque surface. All designs retain their native composition.
                     CompositionLocalProvider(
                         LocalCapsuleBackgroundMotionEnabled provides (pageDraws && !state.isAnimationRunning),
                         LocalPlayerSceneTransition provides sceneTransitioning,
