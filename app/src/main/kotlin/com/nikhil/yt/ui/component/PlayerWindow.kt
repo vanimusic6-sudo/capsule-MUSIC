@@ -117,7 +117,7 @@ internal fun PlayerWindow(
                     drawContent()
                     artwork.draw(this)
                 }
-                .then(if (intercept) Modifier.pointerInput(state) {
+                .then(if (intercept) Modifier.pointerInput(state, leftInset, rightInset, miniHeight) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val p = state.visualProgress
@@ -149,7 +149,7 @@ internal fun PlayerWindow(
                                 shape = PlayerWindowShape(frame, contour.radius, 0f)
                                 clip = p < 1f
                                 shadowElevation = playerFrameShadowDp(p).dp.toPx()
-                                // Only this short shell fade, not a second full-page alpha.
+                                // The shell is opaque. Only foreground and outgoing Mini change opacity.
                                 alpha = playerPresentationOpacity(p)
                             }
                             .drawWithContent { if (pageDraws) drawContent() },
