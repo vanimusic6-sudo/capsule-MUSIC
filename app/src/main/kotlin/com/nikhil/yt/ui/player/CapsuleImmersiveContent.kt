@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.nikhil.yt.ui.component.LocalPlayerSceneTransition
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -982,8 +983,11 @@ internal fun CapsuleImmersiveContent(
         // after leaving neutral. One whole-scene reveal is all that remains.
         val currentSceneReady = frame?.key == visualKey && matchedPaint != null &&
             coverAndGradientReady && frame?.painter != null
+        val sceneTransitioning = LocalPlayerSceneTransition.current
         val sceneRevealAlpha = remember(mediaMetadata.id) {
-            Animatable(if (entryScene?.paintKey == paintKey) 1f else 0f)
+            // Prepared photo and blur already belong to the incoming live page.
+            // Do not stack a second initial reveal over the page transition.
+            Animatable(if (entryScene?.paintKey == paintKey || (sceneTransitioning && currentSceneReady)) 1f else 0f)
         }
         LaunchedEffect(mediaMetadata.id, visualKey, currentSceneReady) {
             if (!currentSceneReady) sceneRevealAlpha.snapTo(0f)
