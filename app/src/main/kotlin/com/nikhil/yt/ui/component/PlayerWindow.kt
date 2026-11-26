@@ -21,6 +21,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 
@@ -143,6 +144,7 @@ internal fun PlayerWindow(
                         val contour = playerPageContour(p, miniRadius.toPx(), density)
                         shape = PlayerWindowShape(frame, contour.radius, contour.bleed)
                         clip = true
+                        shadowElevation = playerFrameShadowDp(p).dp.toPx()
                     }
                     .drawWithContent { if (playerPageVisible(state.visualProgress)) drawContent() },
                 ) {
