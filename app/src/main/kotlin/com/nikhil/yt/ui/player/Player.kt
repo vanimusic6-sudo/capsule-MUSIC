@@ -105,6 +105,7 @@ import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
+import com.nikhil.yt.ui.component.playerContentOpacity
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
@@ -594,6 +595,11 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
+        // Immersion is one prepared photographic scene; video and lyrics never
+        // masquerade as a detached shared album image.
+        playerAtomicScene = effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE,
+        playerSharedArtwork = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+            !videoPlaybackState.presentingVideo && !videoPlaybackState.needsSurface && !showInlineLyrics,
         // Paint the shell solid before artwork arrives; the old translucent material
         // revealed the Home UI THROUGH the cover in the middle of the rise.
         surfaceAlpha = if (state.classicPlayerPresentation)
@@ -736,7 +742,8 @@ fun BottomSheetPlayer(
                     // BottomSheet owns the one transition alpha for every player design.
                     // Immersive keeps this hook for its internal layout, but a second fade here
                     // would square the opacity and desynchronise it from Light.
-                    transitionForegroundAlpha = { 1f },
+                    transitionForegroundAlpha = { if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE)
+                        playerContentOpacity(state.visualProgress) else 1f },
                     onShowMenu = {
                         menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
                             PlayerMenu(
