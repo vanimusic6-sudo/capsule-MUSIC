@@ -839,15 +839,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 }
                             }
                         }
-                        if (activeTempo != SoundStudioTempoVariant.NORMAL) {
-                            Text(
-                                stringResource(if (activeTempo == SoundStudioTempoVariant.SPEED_UP)
-                                    R.string.capsule_studio_final_fast_hint else R.string.capsule_studio_final_slow_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            )
-                        }
+
                     }
                     Spacer(Modifier.height(8.dp))
                 }
