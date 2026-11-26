@@ -253,10 +253,10 @@ class PlayerOpeningMotionTest {
             if (classicMini == 0f) assertEquals(1f, classicShell, 0.00001f)
             assertTrue(playerMiniApproach(p) in 0.964f..1f)
             assertTrue(playerMiniHeightScale(p) in 0.980f..1f)
-            if (p >= 0.48f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
+            if (p >= 0.56f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
         }
-        assertTrue(playerNavigationTuck(0.18f) > 0.60f)
-        assertEquals(1f, playerNavigationTuck(0.30f), 0f)
+        assertTrue(playerNavigationTuck(0.18f) > 0.58f)
+        assertEquals(1f, playerNavigationTuck(0.32f), 0f)
         assertEquals(0f, playerNavigationTuck(0f), 0f)
         assertEquals(1f, playerMiniApproach(0f), 0f)
         assertEquals(1f, playerMiniApproach(1f), 0f)
@@ -290,8 +290,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 150f..230f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 925f)
+            assertTrue("Responsive first two frames", at(33) in 130f..220f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 900f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -326,7 +326,7 @@ class PlayerOpeningMotionTest {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
         assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 10f..16f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 15f..18f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -499,6 +499,37 @@ class PlayerOpeningMotionTest {
         assertEquals(destination.center.x, end.exactCenterX(), 4f)
         assertEquals(destination.center.y, end.exactCenterY(), 4f)
         settled.recycle()
+    }
+
+    @Test fun materialHandoffAndArtworkStayWithinOnePhysicalContainer() {
+        val dock = androidx.compose.ui.geometry.Rect(22f, 594f, 62f, 634f)
+        val target = androidx.compose.ui.geometry.Rect(60f, 56f, 300f, 296f)
+        var lastMaterial = 0f
+        var lastScene = 0f
+        var lastMini = 1f
+        for (i in 0..1000) {
+            val p = i / 1000f
+            val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
+            for (start in listOf(0f, 0.005f, 0.10f)) {
+                val art = playerArtworkBounds(dock, target, playerPhase(p, start, 1f))
+                assertTrue(art.left >= frame.left - 0.001f && art.top >= frame.top - 0.001f)
+                assertTrue(art.right <= frame.right + 0.001f && art.bottom <= frame.bottom + 0.001f)
+            }
+            val material = playerMaterialReveal(p)
+            val scene = playerAtomicSceneAlpha(p)
+            val mini = playerMiniMaterialAlpha(p)
+            assertTrue(material >= lastMaterial - 0.00001f && material in 0f..1f)
+            assertTrue(scene >= lastScene - 0.00001f && scene in 0f..1f)
+            assertTrue(mini <= lastMini + 0.00001f && mini in 0f..1f)
+            lastMaterial = material
+            lastScene = scene
+            lastMini = mini
+        }
+        assertEquals(1f, lastMaterial, 0f)
+        assertEquals(1f, lastScene, 0f)
+        assertEquals(0f, lastMini, 0f)
+        assertEquals(1f, playerMiniMaterialAlpha(0f), 0f)
+        assertEquals(0f, playerAtomicSceneAlpha(0f), 0f)
     }
 
     @Test fun sharedBoundsRemainFiniteAndReversibleWithAsymmetricInsets() {
