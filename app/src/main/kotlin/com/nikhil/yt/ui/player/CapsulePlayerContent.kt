@@ -70,7 +70,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
 import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -594,9 +593,9 @@ fun CapsulePlayerContent(
                 CapsuleVideoArtworkTransition(
                     // Hide the entire native artwork slot, including its black matte,
                     // while the shared painter owns the photo. The slot stays measured.
-                    modifier = Modifier.drawWithContent {
-                        if (isCapsuleVideoPlaying || needsVideoSurface ||
-                            playerArtworkMotion?.ownsArtwork(mediaMetadata.id) != true) drawContent()
+                    modifier = Modifier.graphicsLayer {
+                        alpha = if (isCapsuleVideoPlaying || needsVideoSurface) 1f
+                            else playerArtworkMotion?.nativeArtworkOpacity(mediaMetadata.id) ?: 1f
                     },
                     presentingVideo = isCapsuleVideoPlaying,
                     needsSurface = needsVideoSurface,
