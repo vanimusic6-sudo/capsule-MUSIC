@@ -14,7 +14,6 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.lerp
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.sin
@@ -375,6 +374,7 @@ private fun gaussianWeights(size: Int, sigma: Float) = FloatArray(size * size).a
 
 private val backdropHorizontalWeights = gaussianWeights(PAGE_COLUMNS, PAGE_COLUMNS * 0.16f)
 private val backdropVerticalWeights = gaussianWeights(PAGE_ROWS, PAGE_ROWS * 0.12f)
+private val legacyBackdropVerticalWeights = gaussianWeights(PAGE_ROWS, PAGE_ROWS * 0.10f)
 
 private class SplineAxis(output: Int, source: Int) {
     val indices = IntArray(output * 4)
@@ -411,6 +411,61 @@ internal fun capsuleImmersiveBackdropSourceX(
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
     val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
     val eased = progress * progress * (3f - 2f * progress)
+    val widthScale = 1f - (1f - stage) * eased
+    // The old affine X map created long, ruler-straight colour columns
+    // regardless of the artwork. A bounded two-dimensional displacement
+    // bends the *precomputed* colour field, not the sharp photograph.
+    // It is exactly zero at the cover seam and bottom, so neither boundary
+    // acquires a new mismatch. No frame-clock, GPU blur or allocations.
+    val envelope = sin(PI.toFloat() * progress).let { it * it }
+    // A broad, elliptical colour-cloud drift rather than a tiny pixel wiggle.
+    // The original 5.5% warp vanished into the horizontal Gaussian blur;
+    // this low-frequency 13% displacement remains visible after smoothing.
+    val flow = sin(2f * PI.toFloat() *
+        (pageY * 1.15f + pageX * 0.25f + 0.21f))
+    val bend = 0.13f * envelope * flow
+    return (0.5f + (pageX - 0.5f) * widthScale + bend).coerceIn(0f, 1f)
+}
+
+/**
+ * Diffuse the original coarse colour field through the continuation (not the photograph).
+ * The previous source Y stayed pinned at 0.82 over a large region, forming
+ * a perfectly horizontal flat band. Both halves now join at 0.82 without
+ * any clamped plateau, then diffuse deeper into the picture.
+ */
+internal fun capsuleImmersiveBackdropSourceY(
+    pageX: Float, pageY: Float, stageFraction: Float,
+): Float {
+    val stage = stageFraction.coerceIn(0.35f, 0.75f)
+    if (pageY <= stage) {
+        return ((pageY / stage).coerceIn(0f, 1f) * IMMERSIVE_VISIBLE_SAMPLE_END)
+    }
+    val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+    val envelope = sin(PI.toFloat() * progress).let { it * it }
+    val curved = 0.045f * envelope * cos(
+        2f * PI.toFloat() * (pageX * 0.93f + pageY * 0.43f)
+    )
+    return (IMMERSIVE_VISIBLE_SAMPLE_END - progress * 0.43f + curved)
+        .coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END)
+}
+
+/**
+ * Keep the generated, blurred continuation horizontally aligned with the actual
+ * centre-cropped photo at the seam. The old implementation instantaneously
+ * narrowed the sample to stageFraction at pageY == stageFraction, introducing
+ * an image-dependent horizontal jump (visible as a stripe on busy covers).
+ *
+ * Ease the narrowing ONLY below the artwork boundary. The sharp cover and
+ * sampled source colour are untouched; no extra GPU layer or frame loop.
+ */
+private fun solidImmersiveBackdropSourceX(
+    pageX: Float,
+    pageY: Float,
+    stageFraction: Float,
+): Float {
+    val stage = stageFraction.coerceIn(0.35f, 0.75f)
+    val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+    val eased = progress * progress * (3f - 2f * progress)
     val widthScale = 1f - (1f - maxOf(stage, 0.78f)) * eased
     // The old affine X map created long, ruler-straight colour columns
     // regardless of the artwork. A bounded two-dimensional displacement
@@ -436,7 +491,7 @@ internal fun capsuleImmersiveBackdropSourceX(
  * Sample a narrow band of the actual edge with a bounded spatial variation;
  * never sweep back through the face or other upper artwork content.
  */
-internal fun capsuleImmersiveBackdropSourceY(
+private fun solidImmersiveBackdropSourceY(
     pageX: Float, pageY: Float, stageFraction: Float,
 ): Float {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
@@ -467,42 +522,25 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
     }
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) {
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
-        val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
-        val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
-        val edgeColor = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
-        // A photograph without a coherent surround needs a spatial palette,
-        // not a stretched scanline of the subject's trousers/chair/table.
-        // Sample several broad colour regions (never reflect the photo).
-        val color = if (ground == null && pageY > stage) {
-            val t = immersiveSmootherStep(stage, (stage + 0.19f).coerceAtMost(1f), pageY)
-            val drift = sin(2f * PI.toFloat() * (pageY * 0.79f + pageX * 0.20f + 0.12f))
-            val cross = cos(2f * PI.toFloat() * (pageY * 0.63f - pageX * 0.32f))
-            val x1 = (sourceX + 0.12f * drift).coerceIn(0f, 1f)
-            val x2 = (sourceX - 0.15f * cross).coerceIn(0f, 1f)
-            val a = sample(x1, (0.62f + 0.11f * cross).coerceIn(0f, 1f))
-            val b = sample(x2, (0.79f + 0.14f * drift).coerceIn(0f, 1f))
-            // Give existing colour a modest preference over neutral foreground.
-            // Blend actual sampled colours; never invent a new hue.
-            fun weight(c: Color): Float {
-                val high = maxOf(c.red, c.green, c.blue)
-                val low = minOf(c.red, c.green, c.blue)
-                return 0.38f + (high - low) * 1.2f + high * 0.18f
-            }
-            val wa = weight(a); val wb = weight(b)
-            val regional = lerp(a, b, wb / (wa + wb))
-            lerp(edgeColor, regional, 0.78f * t)
-        } else edgeColor
+        // Complex covers use the pre-Metrolist Capsule spatial mapping exactly.
+        // The solid-surround renderer is independent and retains its current geometry.
+        val sourceX = if (ground == null) capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
+            else solidImmersiveBackdropSourceX(pageX, pageY, stage)
+        val visibleY = if (ground == null) capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
+            else solidImmersiveBackdropSourceY(pageX, pageY, stage)
+        val color = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }
     val horizontal = FloatArray(raw.size)
     val blurred = FloatArray(raw.size)
+    val verticalWeights = if (ground == null) legacyBackdropVerticalWeights else backdropVerticalWeights
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) for (sx in 0 until PAGE_COLUMNS) {
         val weight = backdropHorizontalWeights[x * PAGE_COLUMNS + sx]
         for (c in 0..2) horizontal[(y * PAGE_COLUMNS + x) * 3 + c] += raw[(y * PAGE_COLUMNS + sx) * 3 + c] * weight
     }
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) for (sy in 0 until PAGE_ROWS) {
-        val weight = backdropVerticalWeights[y * PAGE_ROWS + sy]
+        val weight = verticalWeights[y * PAGE_ROWS + sy]
         for (c in 0..2) blurred[(y * PAGE_COLUMNS + x) * 3 + c] += horizontal[(sy * PAGE_COLUMNS + x) * 3 + c] * weight
     }
     // Resolve a confidently detected solid surround AFTER spatial diffusion.
@@ -526,7 +564,12 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val pageY = (y + 0.5f) / PAINT_HEIGHT
         // Preserve the old darkness at the top, middle and bottom, but
         // eliminate changes of slope at hard-coded horizontal boundaries.
-        val scrim = 0.40f * Math.pow(pageY.toDouble(), 2.7).toFloat()
+        val scrim = if (ground != null) 0.40f * Math.pow(pageY.toDouble(), 2.7).toFloat()
+        else when {
+            pageY < 0.38f -> pageY / 0.38f * 0.03f
+            pageY < 0.68f -> 0.03f + (pageY - 0.38f) / 0.30f * 0.11f
+            else -> 0.14f + (pageY - 0.68f) / 0.32f * 0.26f
+        }
         val groundMix = if (groundChannels != null)
             immersiveSmootherStep(stage * 0.72f, stage * 0.98f, pageY)
         else 0f
