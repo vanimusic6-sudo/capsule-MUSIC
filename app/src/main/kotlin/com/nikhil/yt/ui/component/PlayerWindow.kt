@@ -174,7 +174,7 @@ internal fun PlayerWindow(
                                     onDrawWithContent {
                                         // Keep the same base underneath for the whole trip;
                                         // the destination fades over it, not through a third color.
-                                        if (bridge != null) drawRect(bridge)
+                                        if (state.visualProgress < 1f && bridge != null) drawRect(bridge)
                                         else drawRect(backgroundColor)
                                         drawContent()
                                     }
