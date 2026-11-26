@@ -30,15 +30,15 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // One bounded timeline for both layouts: no overshoot or sub-pixel spring tail.
 // A reversed request starts from the actual current anchor, not an endpoint.
-internal const val PLAYER_OPEN_DURATION_MS = 280
-internal const val PLAYER_CLOSE_DURATION_MS = 240
+internal const val PLAYER_OPEN_DURATION_MS = 370
+internal const val PLAYER_CLOSE_DURATION_MS = 330
 internal val PlayerOpenAnimation = tween<Float>(
     durationMillis = PLAYER_OPEN_DURATION_MS,
-    easing = CubicBezierEasing(0.22f, 0.10f, 0.22f, 1f),
+    easing = CubicBezierEasing(0.38f, 0f, 0.24f, 1f),
 )
 internal val PlayerCloseAnimation = tween<Float>(
     durationMillis = PLAYER_CLOSE_DURATION_MS,
-    easing = CubicBezierEasing(0.28f, 0f, 0.36f, 1f),
+    easing = CubicBezierEasing(0.38f, 0f, 0.30f, 1f),
 )
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
@@ -101,7 +101,7 @@ internal fun playerSceneShouldInterceptTouch(
 
 // The real mini starts returning before the closing window reaches its final dock.
 // Both surfaces use the same anchor, so no late source swap or flash is introduced.
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.13f, 0.60f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.12f, 0.70f)
 internal fun playerMiniLift(progress: Float, density: Float): Float =
     -2f * density * window(progress, 0f, 0.48f)
 internal fun playerMiniApproach(progress: Float): Float =
@@ -112,13 +112,13 @@ internal fun playerMiniApproach(progress: Float): Float =
 // Keep the content close to its natural size; the CONTOUR supplies the large size change.
 // A 24% page scale made the artwork collapse into a detached, left-anchored vertical strip
 // on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.015f, 0.56f)
-internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.11f, 0.66f)
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.025f, 0.65f)
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.16f, 0.80f)
 // The real contour supplies the size transformation. The previous extra
 // 5% scale on revealed artwork looked like a second card snapping into place.
 // Keep a quiet 2.5% GPU settle, with no new layout or animation clock.
 internal fun playerPresentationScale(progress: Float): Float =
-    0.975f + 0.025f * CapsuleMotion.smooth(boundedProgress(progress))
+    0.99f + 0.01f * CapsuleMotion.smooth(boundedProgress(progress))
 
 // The near-full-size page follows the ascending top edge of the morphing frame. The small
 // underlap keeps artwork IN the revealed card, not cropped to a one-sided strip. At rest both
@@ -139,7 +139,7 @@ internal fun playerPresentationContentY(
  */
 internal fun playerFrameGeometryProgress(progress: Float): Float = boundedProgress(progress).let { p ->
     // A gentle magnetic departure, with a continuous first derivative at both anchors.
-    p - 0.12f * p * (1f - p)
+    p
 }
 
 internal fun playerPresentationBounds(
