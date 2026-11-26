@@ -148,7 +148,8 @@ internal fun CapsuleEqualizerGraph(
     // Solid colors keep the rails and curve from showing through the handles.
     val grid = lerp(scheme.surface, scheme.onSurface, 0.12f)
     val neutral = lerp(scheme.surface, scheme.onSurface, 0.27f)
-    val railFill = lerp(grid, accent, 0.28f)
+    val railFill = lerp(grid, accent, 0.42f)
+    val inactiveHandle = lerp(scheme.surface, accent, 0.76f)
     val updateSelected by rememberUpdatedState(onBandSelected)
     val updateLevel by rememberUpdatedState(onLevelChanged)
     val finish by rememberUpdatedState(onFinished)
@@ -218,22 +219,22 @@ internal fun CapsuleEqualizerGraph(
                 val side = size.width / (2f * count)
                 val innerW = (size.width - side * 2f).coerceAtLeast(1f)
                 val innerH = (size.height - inset * 2f).coerceAtLeast(1f)
-                fun point(index: Int): Offset {
+                val points = List(count) { index ->
                     val x = if (count == 1) size.width / 2f else side + innerW * index / (count - 1)
                     val y = capsuleBandGraphY(
                         normalized[index], size.height, minMb, maxMb,
                         bandLimitsMb[index].last, inset, bandLimitsMb[index].first,
                     )
-                    return Offset(x, y)
+                    Offset(x, y)
                 }
                 val baseline = capsuleGraphZeroY(size.height, minMb, maxMb, inset)
                 drawLine(neutral, Offset(side, baseline), Offset(size.width - side, baseline), 1.dp.toPx())
                 repeat(count) { i ->
-                    val x = point(i).x
+                    val x = points[i].x
                     val rail = 5.dp.toPx()
                     drawRoundRect(grid, Offset(x - rail / 2f, inset), Size(rail, innerH), CornerRadius(rail / 2f))
-                    val top = minOf(point(i).y, baseline)
-                    val height = maxOf(point(i).y, baseline) - top
+                    val top = minOf(points[i].y, baseline)
+                    val height = maxOf(points[i].y, baseline) - top
                     if (height > 0f) drawRoundRect(railFill,
                         Offset(x - rail / 2f, top), Size(rail, height), CornerRadius(rail / 2f))
                 }
@@ -241,18 +242,18 @@ internal fun CapsuleEqualizerGraph(
                 // Connected shape follows the REAL device bands, not six fake frequencies.
                 val curve = Path()
                 for (i in 0 until count) {
-                    val p = point(i)
+                    val p = points[i]
                     if (i == 0) curve.moveTo(p.x, p.y)
                     else {
-                        val prev = point(i - 1)
+                        val prev = points[i - 1]
                         val midX = (prev.x + p.x) / 2f
                         curve.cubicTo(midX, prev.y, midX, p.y, p.x, p.y)
                     }
                 }
                 val fill = Path().apply {
                     addPath(curve)
-                    lineTo(point(count - 1).x, baseline)
-                    lineTo(point(0).x, baseline)
+                    lineTo(points[count - 1].x, baseline)
+                    lineTo(points[0].x, baseline)
                     close()
                 }
                 drawPath(
@@ -267,12 +268,17 @@ internal fun CapsuleEqualizerGraph(
                     width = 2.2.dp.toPx(), cap = StrokeCap.Round,
                 ))
                 repeat(count) { i ->
-                    val p = point(i)
+                    val p = points[i]
                     val active = editable && i == selectedBand
-                    val width = (if (active) 28.dp else 23.dp).toPx()
+                    // Fit ten handles even on narrow devices; never overlap adjacent bands.
+                    val pitch = if (count > 1) innerW / (count - 1) else size.width
+                    val width = minOf((if (active) 28.dp else 22.dp).toPx(), pitch * 0.86f)
                     val height = (if (active) 12.dp else 9.dp).toPx()
-                    drawRoundRect(accent,
-                        Offset(p.x - width / 2f, p.y - height / 2f), Size(width, height), CornerRadius(height / 2f))
+                    val topLeft = Offset(p.x - width / 2f, p.y - height / 2f)
+                    val handleSize = Size(width, height)
+                    val radius = CornerRadius(height / 2f)
+                    if (active) drawRoundRect(accent, topLeft, handleSize, radius)
+                    else drawRoundRect(inactiveHandle, topLeft, handleSize, radius)
                 }
             }
             Row(
