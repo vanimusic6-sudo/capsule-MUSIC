@@ -46,6 +46,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.key
+import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -148,12 +154,11 @@ fun PlayerMenu(
     val resources = LocalResources.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
-    val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
 
     val downloadUtil = LocalDownloadUtil.current
-    val download by downloadUtil.getDownload(mediaMetadata.id)
-        .collectAsState(initial = null)
+    val downloadFlow = remember(downloadUtil, mediaMetadata.id) { downloadUtil.getDownload(mediaMetadata.id) }
+    val download by downloadFlow.collectAsState(initial = null)
     val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
     val isOfflineAudio = mediaMetadata.id.startsWith("capsule-open:offline:")
     val isRadio = mediaMetadata.id.startsWith("capsule-open:radio:")
@@ -189,7 +194,7 @@ fun PlayerMenu(
         }
     }
 
-    var showChoosePlaylistDialog by rememberSaveable {
+    var showChoosePlaylistDialog by rememberSaveable(mediaMetadata.id) {
         mutableStateOf(false)
     }
 
@@ -219,7 +224,7 @@ fun PlayerMenu(
         },
     )
 
-    var showSelectArtistDialog by rememberSaveable {
+    var showSelectArtistDialog by rememberSaveable(mediaMetadata.id) {
         mutableStateOf(false)
     }
 
@@ -291,18 +296,37 @@ fun PlayerMenu(
         subtitle = nowPlayingSubtitle,
         overline = stringResource(R.string.now_playing),
         thumbnailUrl = mediaMetadata.thumbnailUrl,
+        trailingContent = {
+            key(mediaMetadata.id) {
+                val songFlow = remember(database, mediaMetadata.id) { database.song(mediaMetadata.id) }
+                val song by songFlow.collectAsState(initial = null)
+                val liked = song?.song?.liked == true
+                val interaction = remember { MutableInteractionSource() }
+                IconButton(
+                    interactionSource = interaction,
+                    onClick = { playerConnection.service.toggleLike("player_more", mediaMetadata) },
+                ) {
+                    CapsuleFavoriteIcon(
+                        liked = liked,
+                        tint = if (liked) StandardChrome.favorite else LocalContentColor.current,
+                        interactionSource = interaction,
+                    )
+                }
+            }
+        },
     )
 
     if (isQueueTrigger != true) {
         Spacer(modifier = Modifier.height(8.dp))
 
         PlayerVolumeCard(playerConnection = playerConnection)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
     }
 
     LazyColumn(
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null,
+        flingBehavior = rememberCapsuleFlingBehavior(),
+        overscrollEffect = null,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
@@ -365,8 +389,6 @@ fun PlayerMenu(
                 ),
                 compact = true,
             )
-    
-            Spacer(modifier = Modifier.height(8.dp))
             }
         }
         if ((!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
@@ -406,7 +428,7 @@ fun PlayerMenu(
                             )
                         }
 
-if (mediaMetadata.album != null) {
+                        if (mediaMetadata.album != null) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.view_album)) },
                                 leadingContent = {
@@ -662,7 +684,9 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
     LaunchedEffect(eqEnabled, selectedId, storedRaw) { if (!editing || !eqEnabled) draft = null }
     val levels = draft ?: initial
-    val displayed = levels.mapIndexed { i, gain -> gain.coerceIn(limits[i]) }
+    val displayed = remember(levels, limits) {
+        limits.mapIndexed { i, limit -> levels.getOrElse(i) { 0 }.coerceIn(limit) }
+    }
     DisposableEffect(service) { onDispose { service.cancelStudioPreview() } }
     DisposableEffect(service) {
         service.setStudioInteractive(true)
@@ -673,7 +697,6 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
 
     val activeTempo = SoundStudioTempoVariant.resolve(tempo.takeIf { it.isNotEmpty() }, selectedId)
     val equalizerLabel = stringResource(R.string.capsule_studio_final_eq)
-    var showListeningNote by rememberSaveable { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -700,9 +723,9 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         .verticalScroll(rememberScrollState(),
                             flingBehavior = rememberCapsuleFlingBehavior(),
                             overscrollEffect = null)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     EqSection(title = equalizerLabel, trailing = {
                         CapsuleSoftSwitch(
@@ -710,6 +733,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             onCheckedChange = { enabled ->
                                 editing = false
                                 draft = null
+                                service.cancelStudioPreview()
                                 service.setSoundStudioEqEnabled(enabled)
                             },
                             modifier = Modifier.semantics { contentDescription = equalizerLabel },
@@ -726,7 +750,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             onLevelChanged = { band, gain ->
                                 if (eqEnabled && band in 0 until bandCount) {
                                     editing = true
-                                    val next = (draft ?: initial).toMutableList().apply {
+                                    val next = (draft ?: displayed).toMutableList().apply {
                                         this[band] = gain.coerceIn(limits[band])
                                     }
                                     draft = next
@@ -736,7 +760,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             onFinished = { band, gain ->
                                 editing = false
                                 if (eqEnabled && band in 0 until bandCount) {
-                                    val next = (draft ?: initial).toMutableList().apply {
+                                    val next = (draft ?: displayed).toMutableList().apply {
                                         this[band] = gain.coerceIn(limits[band])
                                     }
                                     draft = next
@@ -772,7 +796,9 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 )
                             }
                             TextButton(enabled = eqEnabled, onClick = {
+                                editing = false
                                 draft = null
+                                service.cancelStudioPreview()
                                 service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
                             }) { Text(stringResource(R.string.capsule_studio_final_reset)) }
                         }
@@ -787,7 +813,9 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             )
                             for ((version, label) in versions) {
                                 StudioChoice(stringResource(label), preset == version) {
+                                    editing = false
                                     draft = null
+                                    service.cancelStudioPreview()
                                     service.selectSoundVersion("capsule:${version.id}")
                                 }
                             }
@@ -821,17 +849,6 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             )
                         }
                     }
-                    TextButton(onClick = { showListeningNote = !showListeningNote }) {
-                        Text(stringResource(R.string.capsule_studio_final_listening))
-                    }
-                    if (showListeningNote) {
-                        Text(
-                            stringResource(R.string.capsule_studio_final_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.widthIn(max = 560.dp).padding(horizontal = 16.dp),
-                        )
-                    }
                     Spacer(Modifier.height(8.dp))
                 }
             }
@@ -859,6 +876,7 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
     EqSection(title = stringResource(R.string.capsule_studio_final_mixer), trailing = {
         TextButton(enabled = setting.effect != CapsuleMixerEffect.OFF, onClick = {
             draft = null
+            service.cancelStudioMixerPreview()
             service.setSoundStudioMixer(CapsuleMixerEffect.OFF)
         }) { Text(stringResource(R.string.capsule_studio_final_off)) }
     }) {
@@ -878,6 +896,7 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                         StudioChoice(stringResource(label), setting.effect == effect) {
                             if (setting.effect != effect) {
                                 draft = null
+                                service.cancelStudioMixerPreview()
                                 service.setSoundStudioMixer(effect)
                             }
                         }
@@ -896,8 +915,9 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                 Slider(
                     value = strength.toFloat(),
                     onValueChange = { value ->
-                        val amount = round(value).toInt()
-                        if (strength != amount) {
+                        if (!value.isFinite()) return@Slider
+                        val amount = round(value).toInt().coerceIn(0, 100)
+                        if ((draft ?: setting.amount) != amount) {
                             draft = amount
                             service.previewStudioMixer(setting.effect, amount)
                         }
@@ -909,16 +929,16 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                     interactionSource = strengthInteractions,
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = strengthLabel },
                     thumb = {
-                        Box(Modifier.size(width = 12.dp, height = 24.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp)))
+                        Box(Modifier.size(width = 24.dp, height = 16.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)))
                     },
                     track = { state ->
-                        val shape = RoundedCornerShape(4.dp)
-                        Box(Modifier.fillMaxWidth().height(8.dp).clip(shape)
+                        val shape = RoundedCornerShape(6.dp)
+                        Box(Modifier.fillMaxWidth().height(12.dp).clip(shape)
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                             Box(Modifier.fillMaxWidth((state.value / 100f).coerceIn(0f, 1f))
-                                .height(8.dp)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.72f), shape))
+                                .height(12.dp)
+                                .background(MaterialTheme.colorScheme.primary, shape))
                         }
                     },
                 )
@@ -929,15 +949,21 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
 
 @Composable
 private fun RowScope.StudioChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+    val background by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        tween(160), label = "studioChoiceBackground",
+    )
+    val foreground by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        tween(160), label = "studioChoiceForeground",
+    )
     Surface(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+        modifier = Modifier.weight(1f).heightIn(min = 52.dp),
         shape = RoundedCornerShape(16.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurface,
+        color = background,
+        contentColor = foreground,
     ) {
         Box(Modifier.padding(horizontal = 6.dp, vertical = 8.dp), Alignment.Center) {
             Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
