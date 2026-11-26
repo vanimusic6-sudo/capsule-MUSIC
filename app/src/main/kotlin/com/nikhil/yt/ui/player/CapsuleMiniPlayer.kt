@@ -52,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
 import com.nikhil.yt.ui.component.playerMiniMaterialAlpha
 import com.nikhil.yt.ui.component.playerArtworkEndpoint
@@ -701,6 +702,9 @@ internal fun MiniPlayerSurface(
         CapsuleMiniText
     }
     val transition = LocalPlayerArtworkMotion.current
+    val backgroundClockEnabled by remember(transition) {
+        derivedStateOf { transition == null || transition.progress <= 0f }
+    }
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     val surface = MaterialTheme.colorScheme.surface
@@ -743,7 +747,7 @@ internal fun MiniPlayerSurface(
                 pureBlack = pureBlack,
                 colors = colors,
                 modifier = materialModifier,
-                animated = animated && (transition == null || transition.progress <= 0f),
+                animated = animated && backgroundClockEnabled,
             )
         }
         CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
