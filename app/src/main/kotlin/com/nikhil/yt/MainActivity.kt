@@ -1783,10 +1783,7 @@ class MainActivity : ComponentActivity() {
                                                         1f - navigationBarReveal,
                                                     )
                                                     translationY = navSlideDistance.toPx() * hidden
-                                                    // Restrained suction: phase-locked, no separate bounce.
-                                                    scaleX = 1f - 0.025f * playerNavTuck
-                                                    scaleY = 1f - 0.07f * playerNavTuck
-                                                    transformOrigin = TransformOrigin(0.5f, 1f)
+                                                    // Navigation keeps its native shape and follows scene opacity.
                                                 },
                                     ) {
                                         if (pureBlack) Color.Black
