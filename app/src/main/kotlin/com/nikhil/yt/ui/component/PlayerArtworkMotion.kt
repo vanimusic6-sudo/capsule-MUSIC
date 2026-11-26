@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -47,7 +47,11 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
     var destination by mutableStateOf<Endpoint?>(null)
     private var activeMediaId by mutableStateOf<String?>(null)
     private var activePainter by mutableStateOf<Painter?>(null)
-    private var startProgress by mutableStateOf(0.005f)
+    private var capturedSource by mutableStateOf<Rect?>(null)
+    private var capturedDestination by mutableStateOf<Rect?>(null)
+    private var capturedSourceRadius by mutableStateOf(0.dp)
+    private var capturedDestinationRadius by mutableStateOf(0.dp)
+    private var capturedScale by mutableStateOf(ContentScale.Crop)
     private val clip = Path()
     private val frameClip = Path()
     var compactMaterial by mutableStateOf<Pair<Color, Color>?>(null)
@@ -84,6 +88,8 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         fun clear() {
             activeMediaId = null
             activePainter = null
+            capturedSource = null
+            capturedDestination = null
         }
         if (state.isDismissed || id == null || activeMediaId != id) clear()
         if (!state.isAnimationRunning && !state.compactOpenPress && (p <= 0f || p >= 1f)) {
@@ -93,10 +99,16 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         if (id != null && activeMediaId == null &&
             ((state.isExpandedOrExpanding && p <= 0.10f) ||
                 (state.isCollapsedOrCollapsing && p >= 0.92f))) {
-            // When preparation finishes on the first moving frame, start the
-            // shared bounds at the current dock rather than jumping ahead.
-            startProgress = if (state.isExpandedOrExpanding) p.coerceIn(0.005f, 0.10f) else 0.005f
-            activePainter = destination?.painter
+            val a = source ?: return
+            val b = destination ?: return
+            // Capture geometry once per trip. Layer transforms and recomposition
+            // must not retarget the shared rectangle on every rendered frame.
+            capturedSource = bounds(a) ?: return
+            capturedDestination = bounds(b) ?: return
+            capturedSourceRadius = a.radius
+            capturedDestinationRadius = b.radius
+            capturedScale = b.contentScale
+            activePainter = b.painter
             activeMediaId = id
         }
     }
@@ -114,30 +126,35 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
 
     private fun active(): Boolean =
         activeMediaId != null && activePainter != null && activeMediaId == matchingId() &&
-            progress > startProgress && progress < 0.995f &&
-            source?.let(::bounds) != null && destination?.let(::bounds) != null
+            capturedSource != null && capturedDestination != null
 
     fun ownsArtwork(mediaId: String): Boolean = active() && activeMediaId == mediaId
 
-    fun foregroundOpacity(): Float = if (activeMediaId != null && activeMediaId == matchingId())
-        playerSharedForegroundOpacity(progress) else playerContentOpacity(progress)
+    fun foregroundOpacity(): Float = if (active()) playerSharedForegroundOpacity(progress)
+        else playerContentOpacity(progress)
 
-    fun suppress(endpoint: Endpoint, mini: Boolean): Boolean =
-        active() && (if (mini) source === endpoint else destination === endpoint)
+    fun endpointOpacity(endpoint: Endpoint, mini: Boolean): Float =
+        if (!active()) 1f
+        else if (mini && source === endpoint) playerSharedSourceAlpha(progress)
+        else if (!mini && destination === endpoint) playerSharedDestinationAlpha(progress)
+        else 1f
+
+    fun nativeArtworkOpacity(mediaId: String): Float =
+        if (ownsArtwork(mediaId)) playerSharedDestinationAlpha(progress) else 1f
 
     fun draw(scope: DrawScope, frame: Rect, frameRadius: Float) {
         if (!active()) return
-        val a = source ?: return
-        val b = destination ?: return
-        val from = bounds(a) ?: return
-        val to = bounds(b) ?: return
+        val from = capturedSource ?: return
+        val to = capturedDestination ?: return
         val painter = activePainter ?: return
         val p = progress
-        val t = playerArtworkTravel(p, startProgress)
+        val alpha = playerSharedOverlayAlpha(p)
+        if (alpha <= 0f) return
+        val t = playerArtworkTravel(p, 0.07f)
         val rect = playerContainedArtworkBounds(from, to, t, frame)
         if (rect.width <= 0f || rect.height <= 0f) return
         with(scope) {
-            val radius = (a.radius.toPx() + (b.radius.toPx() - a.radius.toPx()) * t)
+            val radius = (capturedSourceRadius.toPx() + (capturedDestinationRadius.toPx() - capturedSourceRadius.toPx()) * t)
                 .coerceIn(0f, minOf(rect.width, rect.height) * 0.5f)
             clip.reset()
             clip.addRoundRect(RoundRect(rect, CornerRadius(radius, radius)))
@@ -147,7 +164,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
             val drawSize = if (intrinsic != Size.Unspecified && intrinsic.width.isFinite() && intrinsic.height.isFinite() &&
                 intrinsic.width > 0f && intrinsic.height > 0f) {
                 val crop = ContentScale.Crop.computeScaleFactor(intrinsic, rect.size)
-                val target = b.contentScale.computeScaleFactor(intrinsic, rect.size)
+                val target = capturedScale.computeScaleFactor(intrinsic, rect.size)
                 Size(intrinsic.width * (crop.scaleX + (target.scaleX - crop.scaleX) * t),
                     intrinsic.height * (crop.scaleY + (target.scaleY - crop.scaleY) * t))
             } else rect.size
@@ -158,7 +175,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
             clipPath(frameClip) {
                 clipPath(clip) {
                     translate(rect.center.x - drawSize.width * 0.5f, rect.center.y - drawSize.height * 0.5f) {
-                        with(painter) { draw(drawSize) }
+                        with(painter) { draw(drawSize, alpha = alpha) }
                     }
                 }
             }
@@ -192,6 +209,7 @@ internal fun Modifier.playerArtworkEndpoint(
     mini: Boolean,
     radius: Dp,
     contentScale: ContentScale = ContentScale.Crop,
+    parentOwnsOpacity: Boolean = false,
 ): Modifier {
     val motion = LocalPlayerArtworkMotion.current ?: return this
     val endpoint = remember(motion, mediaId, mini) { PlayerArtworkMotion.Endpoint() }
@@ -206,5 +224,5 @@ internal fun Modifier.playerArtworkEndpoint(
         onDispose { motion.detach(endpoint, mini) }
     }
     return onGloballyPositioned { endpoint.coordinates = it }
-        .drawWithContent { if (!motion.suppress(endpoint, mini)) drawContent() }
+        .graphicsLayer { alpha = if (parentOwnsOpacity) 1f else motion.endpointOpacity(endpoint, mini) }
 }
