@@ -165,26 +165,45 @@ internal data class ImmersiveMetadataInk(val title: Color, val artist: Color)
 
 /** Choose readable metadata ink from the prepared image; leave transport controls unchanged. */
 internal fun immersiveMetadataInk(background: Color): ImmersiveMetadataInk {
-    val light = background.luminance()
-    // Bright yellow/cyan artwork needs the same readable ink as white paper.
-    // Use the actual prepared background, not a saturation-based exception.
-    val nearWhite = light >= 0.70f &&
-        maxOf(background.red, background.green, background.blue) -
-        minOf(background.red, background.green, background.blue) <= 0.16f
-    return when {
-        nearWhite -> ImmersiveMetadataInk(Color(0xFF545451), Color(0xFF545451).copy(alpha = 0.82f))
-        light >= 0.32f -> ImmersiveMetadataInk(Color(0xFF242424), Color(0xFF242424).copy(alpha = 0.88f))
-        else -> ImmersiveMetadataInk(Color.White, Color.White.copy(alpha = if (light > 0.14f) 0.92f else 0.72f))
-    }
+    // Dark metadata is reserved for a genuinely near-white, achromatic surface.
+    // A bright patch of yellow, skin or blue is not a white background.
+    val high = maxOf(background.red, background.green, background.blue)
+    val low = minOf(background.red, background.green, background.blue)
+    val nearWhite = background.luminance() >= 0.70f &&
+        low >= 0.80f && high - low <= 0.10f
+    return if (nearWhite)
+        ImmersiveMetadataInk(Color(0xFF545451), Color(0xFF545451).copy(alpha = 0.82f))
+    else ImmersiveMetadataInk(Color.White, Color.White.copy(
+        alpha = if (background.luminance() > 0.14f) 0.92f else 0.72f,
+    ))
 }
 
 private fun immersiveMetadataBackground(bitmap: ImageBitmap?, fraction: Float): Color {
-    if (bitmap == null) return IMMERSIVE_NEUTRAL_COLOR
+    if (bitmap == null || !fraction.isFinite()) return IMMERSIVE_NEUTRAL_COLOR
     val image = bitmap.asAndroidBitmap()
-    // Metadata can be moved in the editor. Sample its actual page position,
-    // not the album's average brightness, once per texture/position change.
-    return Color(image.getPixel(image.width * 3 / 10,
-        (fraction * image.height).toInt().coerceIn(0, image.height - 1)))
+    // Use the entire text region rather than a single bright pixel under it.
+    // All samples must be near-white before permitting dark metadata.
+    val centerY = (fraction * image.height).toInt().coerceIn(0, image.height - 1)
+    val dy = (image.height * 0.012f).toInt().coerceAtLeast(1)
+    var darkest = Color.White
+    var darkestLight = 1f
+    for (y in intArrayOf(centerY - dy, centerY, centerY + dy)) {
+        for (x in floatArrayOf(0.08f, 0.22f, 0.38f, 0.54f)) {
+            val sample = Color(image.getPixel(
+                (image.width * x).toInt().coerceIn(0, image.width - 1),
+                y.coerceIn(0, image.height - 1),
+            ))
+            val high = maxOf(sample.red, sample.green, sample.blue)
+            val low = minOf(sample.red, sample.green, sample.blue)
+            val light = sample.luminance()
+            if (high - low > 0.10f || low < 0.80f || light < 0.70f) return sample
+            if (light < darkestLight) {
+                darkestLight = light
+                darkest = sample
+            }
+        }
+    }
+    return darkest
 }
 
 /** A track opacity is applied AFTER the photo and its continuation are joined. */
@@ -854,7 +873,7 @@ internal fun CapsuleImmersiveContent(
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction) {
-            "image-original-direction-v10|${frame?.key}|$coverFraction"
+            "image-original-direction-v11|${frame?.key}|$coverFraction"
         }
         // This texture is keyed to the currently displayed frame. No outgoing
         // bitmap is retained, so there is no cross-song GPU layer to draw.
