@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 
 /**
@@ -42,6 +43,8 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         var contentScale by mutableStateOf(ContentScale.Crop)
     }
 
+    private data class DockGeometry(val mediaId: String, val bounds: Rect, val radius: Dp, val viewport: IntSize)
+    private var dockGeometry by mutableStateOf<DockGeometry?>(null)
     var root by mutableStateOf<LayoutCoordinates?>(null)
     var source by mutableStateOf<Endpoint?>(null)
     var destination by mutableStateOf<Endpoint?>(null)
@@ -69,14 +72,33 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
 
     var sharedArtworkEnabled by mutableStateOf(true)
 
+    // The Mini's expensive playback subtree is retired at fullscreen rest.
+    // Keep only its last measured rectangle, never a screenshot or old painter.
+    // A cached dock is valid only for this exact track and viewport.
+    fun recordDockGeometry() {
+        if (progress > 0.035f || state.isDismissed || !state.isCollapsed) return
+        val host = root ?: return
+        val endpoint = source ?: return
+        val id = endpoint.mediaId ?: return
+        if (!host.isAttached || endpoint.painter == null) return
+        val rect = bounds(endpoint) ?: return
+        dockGeometry = DockGeometry(id, rect, endpoint.radius, host.size)
+    }
+
+    private fun matchingDock(id: String): DockGeometry? {
+        val host = root ?: return null
+        if (!host.isAttached) return null
+        val endpoint = source
+        if (endpoint?.mediaId != null && endpoint.mediaId != id) return null
+        return dockGeometry?.takeIf { it.mediaId == id && it.viewport == host.size }
+    }
+
     fun matchingId(): String? {
         if (!sharedArtworkEnabled) return null
-        val a = source ?: return null
         val b = destination ?: return null
-        val id = a.mediaId ?: return null
-        if (id != b.mediaId || a.painter == null || b.painter == null ||
-            root?.isAttached != true || a.coordinates?.isAttached != true ||
-            b.coordinates?.isAttached != true) return null
+        val id = b.mediaId ?: return null
+        if (b.painter == null || root?.isAttached != true ||
+            b.coordinates?.isAttached != true || matchingDock(id) == null) return null
         return id
     }
 
@@ -97,15 +119,15 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
             return
         }
         if (id != null && activeMediaId == null &&
-            ((state.isExpandedOrExpanding && p <= 0.10f) ||
-                (state.isCollapsedOrCollapsing && p >= 0.92f))) {
-            val a = source ?: return
+            ((state.isExpandedOrExpanding && p <= 0.07f) ||
+                (state.isCollapsedOrCollapsing && p >= 0.985f))) {
+            val dock = matchingDock(id) ?: return
             val b = destination ?: return
             // Capture geometry once per trip. Layer transforms and recomposition
             // must not retarget the shared rectangle on every rendered frame.
-            capturedSource = bounds(a) ?: return
+            capturedSource = dock.bounds
             capturedDestination = bounds(b) ?: return
-            capturedSourceRadius = a.radius
+            capturedSourceRadius = dock.radius
             capturedDestinationRadius = b.radius
             capturedScale = b.contentScale
             activePainter = b.painter
@@ -218,11 +240,16 @@ internal fun Modifier.playerArtworkEndpoint(
         endpoint.painter = painter
         endpoint.radius = radius
         endpoint.contentScale = contentScale
+        if (mini) motion.recordDockGeometry()
     }
     DisposableEffect(motion, endpoint, mini) {
         motion.attach(endpoint, mini)
         onDispose { motion.detach(endpoint, mini) }
     }
-    return onGloballyPositioned { endpoint.coordinates = it }
-        .graphicsLayer { alpha = if (parentOwnsOpacity) 1f else motion.endpointOpacity(endpoint, mini) }
+    return onGloballyPositioned {
+        endpoint.coordinates = it
+        if (mini) motion.recordDockGeometry()
+    }.then(if (parentOwnsOpacity) Modifier else Modifier.graphicsLayer {
+        alpha = motion.endpointOpacity(endpoint, mini)
+    })
 }
