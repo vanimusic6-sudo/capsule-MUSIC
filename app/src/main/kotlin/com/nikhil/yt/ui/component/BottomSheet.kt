@@ -217,19 +217,19 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
  * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.16f, 0.68f)
+    transitionWindow(progress, 0.06f, 0.64f)
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0.10f, 0.70f)
+    1f - transitionWindow(progress, 0.12f, 0.70f)
 
 /** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.035f, 0.56f)
+    transitionWindow(progress, 0.12f, 0.78f)
 
 /** Colored Light background precedes text/control reveal; Immersion owns its own photograph. */
 internal fun playerClassicBackdropAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.025f, 0.46f)
+    transitionWindow(progress, 0.05f, 0.65f)
 
 /** Mount the player invisibly before any opacity becomes nonzero; preserve its existing state. */
 internal const val PlayerClassicContentMountThreshold = 0.015f
@@ -445,14 +445,14 @@ fun BottomSheet(
                                 // then reunites with the exact dock. No independent spring.
                                 // One existing spring; the Mini compresses and recovers
                                 // entirely before the artwork cross-handoff.
-                                scaleX = CapsuleMotion.miniScaleX(p)
-                                scaleY = CapsuleMotion.miniScaleY(p)
+                                scaleX = 1f
+                                scaleY = 1f
                                 transformOrigin = TransformOrigin(0.5f, 1f)
                             }
                         }
                         // A z-order flip WHILE Mini is translucent produced a thin stray card
                         // at the side of the recording. Change order only after it is invisible.
-                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < 0.64f)
+                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < 0.70f)
                             2f else if (!state.classicPlayerPresentation && state.compactSurfaceVisible)
                             2f else 0f)
                         .then(
