@@ -43,7 +43,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         var contentScale by mutableStateOf(ContentScale.Crop)
     }
 
-    private data class DockGeometry(val mediaId: String, val bounds: Rect, val radius: Dp, val viewport: IntSize)
+    private data class DockGeometry(val mediaId: String, val bounds: Rect, val radius: Dp, val viewport: IntSize, val collapsedBound: Dp)
     private var dockGeometry by mutableStateOf<DockGeometry?>(null)
     var root by mutableStateOf<LayoutCoordinates?>(null)
     var source by mutableStateOf<Endpoint?>(null)
@@ -82,7 +82,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         val id = endpoint.mediaId ?: return
         if (!host.isAttached || endpoint.painter == null) return
         val rect = bounds(endpoint) ?: return
-        dockGeometry = DockGeometry(id, rect, endpoint.radius, host.size)
+        dockGeometry = DockGeometry(id, rect, endpoint.radius, host.size, state.collapsedBound)
     }
 
     private fun matchingDock(id: String): DockGeometry? {
@@ -90,7 +90,7 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         if (!host.isAttached) return null
         val endpoint = source
         if (endpoint?.mediaId != null && endpoint.mediaId != id) return null
-        return dockGeometry?.takeIf { it.mediaId == id && it.viewport == host.size }
+        return dockGeometry?.takeIf { it.mediaId == id && it.viewport == host.size && it.collapsedBound == state.collapsedBound }
     }
 
     fun matchingId(): String? {
