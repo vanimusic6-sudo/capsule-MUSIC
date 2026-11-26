@@ -102,6 +102,28 @@ class PlayerTransitionArchitectureTest {
         assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
     }
 
+    @Test fun playerUsesOnlyDedicatedContainerAndTrackScopedSharedArtwork() {
+        val main = source("com/nikhil/yt/MainActivity.kt")
+        val sheet = source("com/nikhil/yt/ui/component/BottomSheet.kt")
+        val window = source("com/nikhil/yt/ui/component/PlayerWindow.kt")
+        val artwork = source("com/nikhil/yt/ui/component/PlayerArtworkMotion.kt")
+        val mini = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
+        val light = source("com/nikhil/yt/ui/player/CapsuleTrackArtworkHandoff.kt")
+        val immersion = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
+        assertTrue(main.contains("classicPlayerPresentation = false"))
+        assertTrue(sheet.contains("if (state.playerMotion) {"))
+        assertFalse(sheet.contains("playerPageNeedsFirstFrame"))
+        assertTrue(window.contains("PlayerWindowShape(frame, contour.radius, 0f)"))
+        assertTrue(window.contains("artwork.draw(this)"))
+        assertTrue(artwork.contains("activeMediaId == matchingId()"))
+        assertTrue(artwork.contains("activePainter = destination?.painter"))
+        assertTrue(artwork.contains("if (!motion.suppress(endpoint, mini)) drawContent()"))
+        assertFalse(artwork.contains("AsyncImage("))
+        assertTrue(mini.contains(".playerArtworkEndpoint("))
+        assertTrue(light.contains(".playerArtworkEndpoint("))
+        assertTrue(immersion.contains(".playerArtworkEndpoint("))
+    }
+
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertTrue(
