@@ -584,7 +584,8 @@ class PlayerOpeningMotionTest {
                 assertEquals(dock, playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f))
                 assertEquals(1f, source, 0.001f)
             }
-            if (p <= 0.985f) assertEquals(1f, playerSharedOverlayAlpha(p), 0f)
+            if (p <= 0.995f) assertEquals(1f, playerSharedOverlayAlpha(p), 0f)
+            assertTrue("Dock handoff cannot accelerate into a second jerk", geometry - lastGeometry <= 0.00190f)
             lastShell = shell
             lastSource = source
             lastNative = native
