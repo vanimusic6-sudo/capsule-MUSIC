@@ -3975,8 +3975,14 @@ class MusicService :
         if (studioMixerPreview?.saving == false) studioMixerPreview = null
     }
 
-    internal fun setSoundStudioMixer(effect: CapsuleMixerEffect, percent: Int? = null) {
-        val pending = percent?.let {
+    internal fun setSoundStudioMixer(
+        effect: CapsuleMixerEffect,
+        percent: Int? = null,
+        previewAmount: Int? = null,
+    ) {
+        // Mode changes can also preview immediately. Keep the persisted amount
+        // authoritative when percent is null; the UI preview is only a hint.
+        val pending = (percent ?: previewAmount)?.let {
             StudioMixerPreview(CapsuleMixerSetting(effect, it.coerceIn(0, 100)), saving = true)
         }
         studioMixerPreview = pending
