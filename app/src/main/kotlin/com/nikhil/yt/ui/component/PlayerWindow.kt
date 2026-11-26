@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -57,6 +58,8 @@ internal fun PlayerWindow(
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
+    atomicScene: Boolean = false,
+    sharedArtwork: Boolean = true,
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
     val insets = WindowInsets.systemBars
@@ -65,6 +68,7 @@ internal fun PlayerWindow(
     val leftInset = with(localDensity) { miniInset.toPx() } + insets.getLeft(localDensity, layoutDirection)
     val rightInset = with(localDensity) { miniInset.toPx() } + insets.getRight(localDensity, layoutDirection)
     val artwork = remember(state) { PlayerArtworkMotion(state) }
+    SideEffect { artwork.sharedArtworkEnabled = sharedArtwork && !atomicScene }
     val interaction = remember(state) { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
@@ -101,7 +105,7 @@ internal fun PlayerWindow(
     LaunchedEffect(artwork, state) {
         snapshotFlow {
             val p = state.visualProgress
-            val phase = when { p <= 0f -> 0; p <= 0.16f -> 1; p < 0.86f -> 2; p < 1f -> 3; else -> 4 }
+            val phase = when { p <= 0f -> 0; p <= 0.10f -> 1; p < 0.92f -> 2; p < 1f -> 3; else -> 4 }
             listOf(artwork.matchingId(), phase, state.isAnimationRunning,
                 state.isExpandedOrExpanding, state.compactOpenPress, state.isDismissed)
         }.collect { artwork.reconcile() }
@@ -115,14 +119,18 @@ internal fun PlayerWindow(
                 .onGloballyPositioned { artwork.root = it }
                 .drawWithContent {
                     drawContent()
-                    artwork.draw(this)
+                    val p = state.visualProgress
+                    if (p > 0f && p < 1f) {
+                        val frame = playerPresentationBounds(p, size.width, size.height,
+                            size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
+                        artwork.draw(this, frame, playerPageContour(p, miniRadius.toPx(), density).radius)
+                    }
                 }
                 .then(if (intercept) Modifier.pointerInput(state, leftInset, rightInset, miniHeight) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val p = state.visualProgress
-                        val dockTop = (state.expandedBound - state.collapsedBound).toPx() -
-                            12.dp.toPx() * playerPhase(p, 0f, 0.40f)
+                        val dockTop = (state.expandedBound - state.collapsedBound).toPx()
                         val compactHit = state.compactForegroundAcceptsInput &&
                             down.position.x in leftInset..(size.width - rightInset) &&
                             down.position.y in dockTop..(dockTop + miniHeight.toPx())
@@ -156,7 +164,17 @@ internal fun PlayerWindow(
                     ) {
                         CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides pageDraws) {
                             Box(
-                                Modifier.fillMaxSize().background(backgroundColor)
+                                Modifier.fillMaxSize().drawWithContent {
+                                    // Opaque destination base; a compact-material bridge fades
+                                    // away beneath the actual backdrop, never above the cover.
+                                    drawRect(backgroundColor)
+                                    val material = artwork.compactMaterial
+                                    val bridge = 1f - playerMaterialReveal(state.visualProgress)
+                                    if (material != null && bridge > 0f) {
+                                        drawRect(Brush.horizontalGradient(listOf(material.first, material.second)), alpha = bridge)
+                                    }
+                                    drawContent()
+                                }
                                     .then(if (intercept) Modifier.pointerInput(state) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -167,7 +185,11 @@ internal fun PlayerWindow(
                                             } while (event.changes.any { it.pressed })
                                         }
                                     } else Modifier),
-                                content = backgroundContent,
+                                content = {
+                                    Box(Modifier.fillMaxSize().graphicsLayer {
+                                        alpha = playerMaterialReveal(state.visualProgress)
+                                    }, content = backgroundContent)
+                                },
                             )
                             // Keep actual text, controls and photo in their final layout.
                             // A modest translation gives depth without sliding an entire
@@ -177,8 +199,8 @@ internal fun PlayerWindow(
                                     val p = state.visualProgress
                                     val frame = playerPresentationBounds(p, size.width, size.height,
                                         size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
-                                    translationY = playerPresentationContentY(p, frame.top, density)
-                                    alpha = playerContentOpacity(p)
+                                    translationY = if (atomicScene) 0f else playerPresentationContentY(p, frame.top, density)
+                                    alpha = if (atomicScene) playerAtomicSceneAlpha(p) else playerContentOpacity(p)
                                 },
                                 content = content,
                             )
@@ -198,7 +220,7 @@ internal fun PlayerWindow(
                         .graphicsLayer {
                             val p = state.visualProgress
                             val dismiss = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
-                            translationY = dismiss - 12.dp.toPx() * playerPhase(p, 0f, 0.40f)
+                            translationY = dismiss
                             val release = 1f - (1f - pressScale) * (1f - playerPhase(p, 0f, 0.18f))
                             scaleX = release
                             scaleY = release
