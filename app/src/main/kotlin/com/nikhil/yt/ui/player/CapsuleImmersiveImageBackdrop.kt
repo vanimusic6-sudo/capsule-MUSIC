@@ -417,13 +417,16 @@ internal fun capsuleImmersiveBackdropSourceX(
     // bends the *precomputed* colour field, not the sharp photograph.
     // It is exactly zero at the cover seam and bottom, so neither boundary
     // acquires a new mismatch. No frame-clock, GPU blur or allocations.
-    val envelope = sin(PI.toFloat() * progress).let { it * it }
+    val envelope = immersiveSmootherStep(0f, 0.55f, progress)
     // A broad, elliptical colour-cloud drift rather than a tiny pixel wiggle.
     // The original 5.5% warp vanished into the horizontal Gaussian blur;
     // this low-frequency 13% displacement remains visible after smoothing.
     val flow = sin(2f * PI.toFloat() *
         (pageY * 1.15f + pageX * 0.25f + 0.21f))
-    val bend = 0.13f * envelope * flow
+    val crossFlow = cos(2f * PI.toFloat() * (pageY * 0.68f - pageX * 0.36f + 0.13f))
+    // Maintain a gentle off-centre drift all the way down instead of
+    // returning to a symmetrical central column at the bottom.
+    val bend = envelope * (0.13f * flow + 0.035f * crossFlow)
     return (0.5f + (pageX - 0.5f) * widthScale + bend).coerceIn(0f, 1f)
 }
 
@@ -466,8 +469,30 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
         val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
         val edgeColor = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
+        // A photograph without a coherent surround needs a spatial palette,
+        // not a stretched scanline of the subject's trousers/chair/table.
+        // Sample several broad colour regions (never reflect the photo).
+        val color = if (ground == null && pageY > stage) {
+            val t = immersiveSmootherStep(stage, (stage + 0.19f).coerceAtMost(1f), pageY)
+            val drift = sin(2f * PI.toFloat() * (pageY * 0.79f + pageX * 0.20f + 0.12f))
+            val cross = cos(2f * PI.toFloat() * (pageY * 0.63f - pageX * 0.32f))
+            val x1 = (sourceX + 0.12f * drift).coerceIn(0f, 1f)
+            val x2 = (sourceX - 0.15f * cross).coerceIn(0f, 1f)
+            val a = sample(x1, (0.62f + 0.11f * cross).coerceIn(0f, 1f))
+            val b = sample(x2, (0.79f + 0.14f * drift).coerceIn(0f, 1f))
+            // Give existing colour a modest preference over neutral foreground.
+            // Blend actual sampled colours; never invent a new hue.
+            fun weight(c: Color): Float {
+                val high = maxOf(c.red, c.green, c.blue)
+                val low = minOf(c.red, c.green, c.blue)
+                return 0.38f + (high - low) * 1.2f + high * 0.18f
+            }
+            val wa = weight(a); val wb = weight(b)
+            val regional = lerp(a, b, wb / (wa + wb))
+            lerp(edgeColor, regional, 0.78f * t)
+        } else edgeColor
         val i = (y * PAGE_COLUMNS + x) * 3
-        raw[i] = edgeColor.red; raw[i + 1] = edgeColor.green; raw[i + 2] = edgeColor.blue
+        raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }
     val horizontal = FloatArray(raw.size)
     val blurred = FloatArray(raw.size)
@@ -483,6 +508,18 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
     // Otherwise the vertical convolution pulls the foreground's blue/brown
     // pixels back into the controls floor, creating a second horizontal band.
     val groundChannels = ground?.let { floatArrayOf(it.red, it.green, it.blue) }
+    // Separable cubic reconstruction: cache horizontal interpolation once
+    // per low-resolution row, instead of 16 products for every output pixel.
+    val reconstructed = FloatArray(PAINT_WIDTH * PAGE_ROWS * 3)
+    for (y in 0 until PAGE_ROWS) for (x in 0 until PAINT_WIDTH) {
+        val dst = (y * PAINT_WIDTH + x) * 3
+        for (dx in 0..3) {
+            val sx = backdropSplineX.indices[x * 4 + dx]
+            val w = backdropSplineX.weights[x * 4 + dx]
+            val src = (y * PAGE_COLUMNS + sx) * 3
+            for (c in 0..2) reconstructed[dst + c] += blurred[src + c] * w
+        }
+    }
     val pixels = IntArray(PAINT_WIDTH * PAINT_HEIGHT)
     for (y in 0 until PAINT_HEIGHT) {
         val pageY = (y + 0.5f) / PAINT_HEIGHT
@@ -503,11 +540,10 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
             var pixel = -0x1000000
             for (c in 0..2) {
                 var value = 0f
-                for (dy in 0..3) for (dx in 0..3) {
-                    val sx = backdropSplineX.indices[x * 4 + dx]
+                for (dy in 0..3) {
                     val sy = backdropSplineY.indices[y * 4 + dy]
-                    value += blurred[(sy * PAGE_COLUMNS + sx) * 3 + c] *
-                        backdropSplineX.weights[x * 4 + dx] * backdropSplineY.weights[y * 4 + dy]
+                    value += reconstructed[(sy * PAINT_WIDTH + x) * 3 + c] *
+                        backdropSplineY.weights[y * 4 + dy]
                 }
                 val settled = if (groundChannels != null)
                     value + (groundChannels[c] - value) * groundMix else value
