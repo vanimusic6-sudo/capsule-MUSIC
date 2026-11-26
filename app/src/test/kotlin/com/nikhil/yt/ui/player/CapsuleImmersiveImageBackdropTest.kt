@@ -202,6 +202,39 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun dominantSolidGroundIgnoresForegroundAndPreservesActualHue() {
+        val teal = 0xFF117B81.toInt()
+        val image = photo().apply {
+            eraseColor(teal)
+            Canvas(this).drawRect(100f, 40f, 220f, 245f,
+                Paint().apply { color = 0xFFFFC044.toInt() })
+        }
+        val field = image.capsuleImmersiveVisibleField(1f, false)
+        val ground = requireNotNull(capsuleImmersiveDominantGround(field))
+        assertTrue(ground.green > ground.red + 0.25f)
+        assertTrue(ground.blue > ground.red + 0.25f)
+        val page = capsuleImmersiveImageBackdropBitmap(field, 0.60f).asAndroidBitmap()
+        val lower = androidx.compose.ui.graphics.Color(page.getPixel(page.width / 2, page.height - 8))
+        assertTrue(lower.green > lower.red + 0.10f)
+        assertTrue(lower.blue > lower.red + 0.10f)
+    }
+
+    @Test fun noReflectionRevisitsTheUpperPhotograph() {
+        for (stage in listOf(0.35f, 0.60f, 0.75f)) {
+            for (i in 0..100) for (x in listOf(0f, 0.5f, 1f)) {
+                val y = stage + (1f - stage) * i / 100f
+                val source = capsuleImmersiveBackdropSourceY(x, y, stage)
+                assertTrue(source >= IMMERSIVE_VISIBLE_SAMPLE_END - 0.066f)
+                assertTrue(source <= IMMERSIVE_VISIBLE_SAMPLE_END)
+            }
+        }
+    }
+
+    @Test fun brightChromaticMetadataGetsDarkInk() {
+        val title = immersiveMetadataInk(androidx.compose.ui.graphics.Color(0xFFFFE940)).title
+        assertTrue(title.red < 0.5f && title.green < 0.5f && title.blue < 0.5f)
+    }
+
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()
