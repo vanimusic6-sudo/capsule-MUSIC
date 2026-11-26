@@ -115,7 +115,9 @@ internal fun playerMiniDrawAlpha(progress: Float): Float =
     1f - window(progress, 0.18f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.015f, 0.40f)
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = window(progress, 0.015f, 0.32f)
-internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.15f, 0.79f)
+// Immersion includes its photograph in this layer: do not leave a solid grey
+// shell exposed while waiting for metadata. Full content settles after the shell.
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.055f, 0.62f)
 
 /** A tiny release pulse, bounded by the source/destination overlap, never a bounce. */
 internal fun playerMiniRelease(progress: Float): Float {
