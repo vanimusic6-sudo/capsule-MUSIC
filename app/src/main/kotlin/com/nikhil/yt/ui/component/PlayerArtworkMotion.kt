@@ -117,6 +117,11 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
             progress > startProgress && progress < 0.995f &&
             source?.let(::bounds) != null && destination?.let(::bounds) != null
 
+    fun ownsArtwork(mediaId: String): Boolean = active() && activeMediaId == mediaId
+
+    fun foregroundOpacity(): Float = if (activeMediaId != null && activeMediaId == matchingId())
+        playerSharedForegroundOpacity(progress) else playerContentOpacity(progress)
+
     fun suppress(endpoint: Endpoint, mini: Boolean): Boolean =
         active() && (if (mini) source === endpoint else destination === endpoint)
 
@@ -128,8 +133,8 @@ internal class PlayerArtworkMotion(private val state: BottomSheetState) {
         val to = bounds(b) ?: return
         val painter = activePainter ?: return
         val p = progress
-        val t = playerPhase(p, startProgress, 1f)
-        val rect = playerArtworkBounds(from, to, t)
+        val t = playerArtworkTravel(p, startProgress)
+        val rect = playerContainedArtworkBounds(from, to, t, frame)
         with(scope) {
             val radius = (a.radius.toPx() + (b.radius.toPx() - a.radius.toPx()) * t)
                 .coerceIn(0f, minOf(rect.width, rect.height) * 0.5f)
@@ -165,6 +170,16 @@ internal fun playerArtworkBounds(from: Rect, to: Rect, progress: Float): Rect {
     fun mix(a: Float, b: Float) = a + (b - a) * t
     return Rect(mix(from.left, to.left), mix(from.top, to.top),
         mix(from.right, to.right), mix(from.bottom, to.bottom))
+}
+
+/** Move the entire photo inside the aperture, never cut off its top as it leads. */
+internal fun playerContainedArtworkBounds(from: Rect, to: Rect, progress: Float, frame: Rect): Rect {
+    val desired = playerArtworkBounds(from, to, progress)
+    val width = desired.width.coerceAtMost(frame.width.coerceAtLeast(0f))
+    val height = desired.height.coerceAtMost(frame.height.coerceAtLeast(0f))
+    val left = desired.left.coerceIn(frame.left, (frame.right - width).coerceAtLeast(frame.left))
+    val top = desired.top.coerceIn(frame.top, (frame.bottom - height).coerceAtLeast(frame.top))
+    return Rect(left, top, left + width, top + height)
 }
 
 internal val LocalPlayerArtworkMotion = staticCompositionLocalOf<PlayerArtworkMotion?> { null }
