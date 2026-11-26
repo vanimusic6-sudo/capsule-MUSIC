@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -217,26 +218,41 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
  * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    playerPresentationOpacity(progress)
+    transitionWindow(progress, 0.015f, 0.30f)
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
+internal const val PLAYER_CLASSIC_MINI_FADE_END = 0.52f
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    playerMiniDrawAlpha(progress)
+    1f - transitionWindow(progress, 0.16f, PLAYER_CLASSIC_MINI_FADE_END)
 
 /** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
-    playerContentOpacity(progress)
+    playerClassicSurfaceAlpha(progress)
 
 /** Colored Light background precedes text/control reveal; Immersion owns its own photograph. */
 internal fun playerClassicBackdropAlpha(progress: Float): Float =
-    playerArtworkBackdropAlpha(progress)
+    playerClassicSurfaceAlpha(progress)
 
 /** Mount the player invisibly before any opacity becomes nonzero; preserve its existing state. */
 internal const val PlayerClassicContentMountThreshold = 0.015f
 
-/** In the accepted main motion, the Mini belongs to the real rising BottomSheet.
- * No counter-travel: it rises and returns with its parent, without a phantom fixed card. */
-internal fun playerClassicMiniCounterTravel(travelPx: Float): Float = 0f
+/** Keep the original Mini at its dock while the full viewport grows behind it.
+ * Negative travel belongs to swipe-to-dismiss and must not be cancelled. */
+internal fun playerClassicMiniCounterTravel(travelPx: Float): Float =
+    if (travelPx.isFinite()) travelPx.coerceAtLeast(0f) else 0f
+
+/** A short magnetic lift, only while the original Mini is still visible. */
+internal fun playerClassicMiniDockLift(progress: Float, density: Float): Float =
+    -5f * density * transitionWindow(progress, 0f, 0.36f)
+
+/** Reveal the full-size artwork through the growing contour with restrained parallax.
+ * Its bottom never leaves the viewport: the lead is always smaller than remaining travel. */
+internal fun playerClassicContentLead(progress: Float, remainingPx: Float, density: Float): Float {
+    if (!remainingPx.isFinite() || !density.isFinite() || density <= 0f || remainingPx <= 0f) return 0f
+    val limit = 36f * density
+    return -0.8f * remainingPx * (limit / (remainingPx + limit)) *
+        transitionWindow(progress, 0.045f, 0.40f)
+}
 
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
@@ -440,11 +456,8 @@ fun BottomSheet(
                             if (state.classicPlayerPresentation) {
                                 translationY = playerClassicMiniCounterTravel(
                                     (state.value - state.collapsedBound).toPx(),
-                                ) + playerMiniLift(p, density)
-                                // Source Mini lags the anchored lift by at most 1.25dp,
-                                // then reunites with the exact dock. No independent spring.
-                                // One existing spring; the Mini compresses and recovers
-                                // entirely before the artwork cross-handoff.
+                                ) + playerClassicMiniDockLift(p, density)
+                                // Only a restrained local release; never fly the Mini up the page.
                                 scaleX = playerMiniApproach(p)
                                 scaleY = playerMiniHeightScale(p)
                                 transformOrigin = TransformOrigin(0.5f, 1f)
@@ -452,7 +465,7 @@ fun BottomSheet(
                         }
                         // A z-order flip WHILE Mini is translucent produced a thin stray card
                         // at the side of the recording. Change order only after it is invisible.
-                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < PLAYER_MINI_FADE_END)
+                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < PLAYER_CLASSIC_MINI_FADE_END)
                             2f else if (!state.classicPlayerPresentation && state.compactSurfaceVisible)
                             2f else 0f)
                         .then(
@@ -493,14 +506,28 @@ fun BottomSheet(
                         .fillMaxSize()
                         .graphicsLayer {
                             val raw = state.visualProgress
-                            scaleX = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx())
+                            val frameScale = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx())
                             transformOrigin = TransformOrigin(0.5f, 0f)
                             val radius = playerFrameCornerRadius(
                                 raw, collapsedTopCornerRadius,
                                 holdVisibleCorner = state.classicPlayerPresentation,
                             )
-                            shape = RoundedCornerShape(topStart = radius, topEnd = radius)
-                            clip = radius > 0.dp
+                            if (state.classicPlayerPresentation) {
+                                // Expand the actual outline, not a horizontally stretched page.
+                                val inset = size.width * (1f - frameScale) * 0.5f
+                                scaleX = 1f
+                                shape = PlayerWindowShape(
+                                    Rect(inset, 0f, size.width - inset, size.height),
+                                    radius.toPx(), 0f,
+                                )
+                                clip = raw < 1f
+                                // One composited photo + controls surface, no double fade.
+                                alpha = surfaceAlpha(raw)
+                            } else {
+                                scaleX = frameScale
+                                shape = RoundedCornerShape(topStart = radius, topEnd = radius)
+                                clip = radius > 0.dp
+                            }
                         },
             ) {
                 Box(
@@ -508,7 +535,7 @@ fun BottomSheet(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                alpha = surfaceAlpha(state.visualProgress)
+                                alpha = if (state.classicPlayerPresentation) 1f else surfaceAlpha(state.visualProgress)
                             }
                             .background(backgroundColor)
                             // The expanded sheet is modal. Its empty/decorative regions must
@@ -539,9 +566,16 @@ fun BottomSheet(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = if (state.classicPlayerPresentation)
-                                        playerClassicContentAlpha(state.visualProgress)
-                                    else fullPlayerContentAlpha(state.visualProgress)
+                                    if (state.classicPlayerPresentation) {
+                                        alpha = 1f
+                                        translationY = playerClassicContentLead(
+                                            state.visualProgress,
+                                            (state.expandedBound - state.value).toPx(),
+                                            density,
+                                        )
+                                    } else {
+                                        alpha = fullPlayerContentAlpha(state.visualProgress)
+                                    }
                                 },
                     ) {
                         content()
