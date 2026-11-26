@@ -203,24 +203,18 @@ internal fun ImmersiveAudioScene(
             bitmap = background, contentDescription = null,
             contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
         )
-        // Blend actual photographic detail into the existing diffuse colour field.
-        // This is a small pre-baked bitmap, not a second decode or animated blur.
+        // A small pre-masked strip occupies only the lower edge of the photo.
+        // Its alpha is already baked off-thread; no second offscreen layer.
         if (photoBlur != null) {
             Image(
                 bitmap = photoBlur,
                 contentDescription = null,
                 contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithCache {
-                        val mask = Brush.verticalGradient(*Array(65) { i ->
-                            val y = i / 64f
-                            y to Color.White.copy(alpha = immersiveBlurredPhotoAlpha(y))
-                        })
-                        onDrawWithContent {
-                            drawContent()
-                            drawRect(mask, blendMode = BlendMode.DstIn)
-                        }
+                modifier = Modifier.fillMaxWidth()
+                    .height((artworkHeight + 1.dp) * (1f - IMMERSIVE_BLUR_STRIP_START))
+                    .align(Alignment.TopCenter)
+                    .graphicsLayer {
+                        translationY = (artworkHeight + 1.dp).toPx() * IMMERSIVE_BLUR_STRIP_START
                     },
             )
         }
@@ -861,7 +855,7 @@ internal fun CapsuleImmersiveContent(
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction) {
-            "image-original-direction-v9|${frame?.key}|$coverFraction"
+            "image-original-direction-v10|${frame?.key}|$coverFraction"
         }
         // This texture is keyed to the currently displayed frame. No outgoing
         // bitmap is retained, so there is no cross-song GPU layer to draw.
