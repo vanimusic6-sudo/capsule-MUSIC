@@ -30,8 +30,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 500f
-internal const val PLAYER_CLOSE_STIFFNESS = 650f
+internal const val PLAYER_OPEN_STIFFNESS = 480f
+internal const val PLAYER_CLOSE_STIFFNESS = 580f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -73,8 +73,8 @@ private fun window(progress: Float, start: Float, end: Float): Float =
     playerPhase(progress, start, end)
 
 /** The app stays stationary; a restrained shadow gives the arriving surface depth. */
-internal fun playerSceneDim(progress: Float): Float = 0.28f * window(progress, 0f, 0.84f)
-internal fun playerSceneScale(progress: Float): Float = 1f - 0.04f * boundedProgress(progress)
+internal fun playerSceneDim(progress: Float): Float = 0.24f * window(progress, 0f, 0.84f)
+internal fun playerSceneScale(progress: Float): Float = 1f - 0.025f * boundedProgress(progress)
 internal fun playerFrameShadowDp(progress: Float): Float {
     val p = boundedProgress(progress)
     return 10f * 4f * p * (1f - p)
@@ -105,26 +105,29 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.52f
+internal const val PLAYER_MINI_FADE_END = 0.45f
 internal fun playerNavigationTuck(progress: Float): Float = window(progress, 0.005f, 0.27f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - window(progress, 0.13f, PLAYER_MINI_FADE_END)
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0f, 0.10f)
+    1f - window(progress, 0.08f, PLAYER_MINI_FADE_END)
+internal fun playerPresentationOpacity(progress: Float): Float = if (boundedProgress(progress) > 0f) 1f else 0f
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 // Immersion includes its photograph in this layer: do not leave a solid grey
 // shell exposed while waiting for metadata. Full content settles after the shell.
-internal fun playerContentOpacity(progress: Float): Float = 1f
+internal fun playerContentOpacity(progress: Float): Float {
+    val t = window(progress, 0.12f, 0.48f)
+    return t * t * (3f - 2f * t)
+}
 
 // Reuse the visible release pulse instead of a subpixel vibration.
 internal fun playerMiniLift(progress: Float, density: Float): Float = 0f
 internal fun playerMiniApproach(progress: Float): Float = CapsuleMotion.miniScaleX(progress)
 internal fun playerMiniHeightScale(progress: Float): Float = CapsuleMotion.miniScaleY(progress)
 internal fun playerPresentationScale(progress: Float): Float =
-    0.94f + 0.06f * boundedProgress(progress)
+    1f
 
 internal fun playerPresentationContentY(
     progress: Float, frameTop: Float, density: Float,
-): Float = frameTop * (1f - 0.35f * boundedProgress(progress))
+): Float = minOf(frameTop.coerceAtLeast(0f) * 0.12f, 22f * density) * (1f - boundedProgress(progress))
 
 /**
  * Coordinates are in the root player's viewport, not in a separately measured overlay.
@@ -219,7 +222,8 @@ internal data class PlayerFrameContour(
 /** The mini's round corners follow the growing frame, then disappear outside the viewport. */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = miniRadius * (1f - window(p, 0.40f, 0.92f))
+    val radius = (miniRadius + (maxOf(miniRadius, 22f * density) - miniRadius) * window(p, 0f, 0.22f)) *
+        (1f - window(p, 0.76f, 1f))
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
