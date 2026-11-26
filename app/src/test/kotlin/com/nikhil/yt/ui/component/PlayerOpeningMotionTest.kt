@@ -700,7 +700,7 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun cornersFinishOutsideTheSquareViewportInsteadOfLosingTheirRadius() {
-        val p=mutableStateOf(0.90f)
+        val p=mutableStateOf(0.40f)
         compose.setContent {
             Box(Modifier.size(260.dp,240.dp).background(Color.Green).testTag("scene")) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
@@ -715,7 +715,7 @@ class PlayerOpeningMotionTest {
             val count=(0 until edge).sumOf{y->(0 until edge).count{x->AndroidColor.red(bitmap.getPixel(x,y))>200}}
             bitmap.recycle();return count
         }
-        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.95f};val leaving=ink("rounded-leaving")
+        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.70f};val leaving=ink("rounded-leaving")
         compose.runOnIdle{p.value=1f};val end=ink("rounded-outside")
         assertTrue(leaving>start);assertTrue(end>leaving)
     }
