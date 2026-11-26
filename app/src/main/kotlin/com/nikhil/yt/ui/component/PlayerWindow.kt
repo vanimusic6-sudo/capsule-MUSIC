@@ -121,7 +121,7 @@ internal fun PlayerWindow(
                     alpha = playerMiniDrawAlpha(p)
                     translationY = playerMiniLift(p, density)
                     scaleX = playerMiniApproach(p)
-                    scaleY = scaleX
+                    scaleY = playerMiniHeightScale(p)
                 }
                 .drawWithContent { if (sourceClock) drawContent() },
             ) {
