@@ -249,6 +249,29 @@ class PlayerOpeningMotionTest {
         assertEquals(1f, playerMiniApproach(1f), 0f)
     }
 
+    @Test fun travelRespondsEarlyAndSettlesWithoutRebound() {
+        for (opening in listOf(true, false)) {
+            val duration = if (opening) PLAYER_OPEN_DURATION_MS else PLAYER_CLOSE_DURATION_MS
+            fun at(ms: Int) = playerTravelCurve(ms.toFloat() / duration, opening)
+            assertTrue("Responsive first 80 ms", at(80) in 0.18f..0.26f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 0.85f)
+            assertTrue("Soft approach, not a hard stop", at(duration - 16) > 0.99f)
+            var peak = 0f
+            var peakTime = 0
+            for (ms in 1..duration) {
+                val step = at(ms) - at(ms - 1)
+                assertTrue(step >= -0.00001f)
+                if (step > peak) {
+                    peak = step
+                    peakTime = ms
+                }
+            }
+            assertTrue("Early impulse, followed by a longer deceleration",
+                peakTime in (duration / 4)..(duration * 2 / 5))
+            assertTrue("Last frame settles gently", 1f - at(duration - 1) < 0.00001f)
+        }
+    }
+
     @Test fun fullPlayerMotionFinishesWithinShortBoundedTime() {
         mount()
         compose.runOnIdle { state.expandSoft() }
