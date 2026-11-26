@@ -105,7 +105,7 @@ import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
-import com.nikhil.yt.ui.component.playerMiniForegroundLayerAlpha
+import com.nikhil.yt.ui.component.playerPresentationOpacity
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
@@ -569,10 +569,10 @@ fun BottomSheetPlayer(
         derivedStateOf {
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                 (
-                    state.visualProgress >
-                        (if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint) ||
-                    // Prepare the same real backdrop while the mini remains still.
-                    (state.playerMotion && state.isExpandedOrExpanding)
+                    if (state.playerMotion) state.isExpandedOrExpanding ||
+                        state.isAnimationRunning || state.compactOpenPress ||
+                        com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
+                    else state.visualProgress > state.contentHandoffPoint
                 )
         }
     }
@@ -595,11 +595,6 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
-        // Immersion is one prepared photographic scene; video and lyrics never
-        // masquerade as a detached shared album image.
-        playerAtomicScene = effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE,
-        playerSharedArtwork = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-            !videoPlaybackState.presentingVideo && !videoPlaybackState.needsSurface && !showInlineLyrics,
         // Paint the shell solid before artwork arrives; the old translucent material
         // revealed the Home UI THROUGH the cover in the middle of the rise.
         surfaceAlpha = if (state.classicPlayerPresentation)
@@ -620,7 +615,7 @@ fun BottomSheetPlayer(
                 visible = miniVisible,
                 glassBackdrop = miniPlayerBackdrop,
                 // BottomSheet fades compact artwork + controls as one UI tree.
-                foregroundAlpha = { playerMiniForegroundLayerAlpha(state.visualProgress) },
+                foregroundAlpha = { 1f - playerPresentationOpacity(state.visualProgress) },
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },
