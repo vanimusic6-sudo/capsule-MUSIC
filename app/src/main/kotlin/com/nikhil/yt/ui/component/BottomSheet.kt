@@ -349,8 +349,6 @@ fun BottomSheet(
     surfaceAlpha: (Float) -> Float = ::playerContainerAlpha,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit = {},
-    playerAtomicScene: Boolean = false,
-    playerSharedArtwork: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     if (state.playerMotion) {
@@ -359,7 +357,6 @@ fun BottomSheet(
             backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
             collapsedHorizontalInset, collapsedTopCornerRadius,
             collapsedContent, backgroundContent, content,
-            atomicScene = playerAtomicScene, sharedArtwork = playerSharedArtwork,
         )
         return
     }
@@ -829,7 +826,8 @@ class BottomSheetState internal constructor(
 
     val shouldLayerAboveCollapsedChrome by
         derivedStateOf {
-            shouldRenderExpandedContent(visualProgress, isDismissed, contentHandoffPoint)
+            if (playerMotion) !isDismissed && playerPageVisible(visualProgress)
+            else shouldRenderExpandedContent(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     val compactSurfaceVisible by
@@ -842,7 +840,7 @@ class BottomSheetState internal constructor(
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
-            if (playerMotion && !classicPlayerPresentation) !isDismissed && visualProgress <= 0.10f
+            if (playerMotion && !classicPlayerPresentation) !isDismissed && !isExpandedOrExpanding && visualProgress <= PlayerSceneTouchThreshold
             else if (classicPlayerPresentation) !isDismissed && visualProgress <= 0.12f
             else miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed, contentHandoffPoint)
         }
