@@ -8,17 +8,10 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.LocalOverscrollFactory
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -26,15 +19,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -55,8 +45,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
@@ -182,20 +170,15 @@ fun BottomSheetMenu(
     state.dialogContent?.invoke()
 
     if (state.isVisible) {
-        if (state.presentation == MenuPresentation.LYRICS_COMPACT) {
-            // Lyrics' fullscreen ink is drawn inside an animated, clipped
-            // player RenderNode. Its native half-expanded sheet used to show
-            // only the modal scrim on some HONOR/Android builds. A dedicated,
-            // explicitly measured Dialog surfaces the compact controls above
-            // the player instead of relying on a hidden sheet anchor.
-            CompactLyricsMoreDialog(state, background)
-            return
-        }
+        val compactLyrics = state.presentation == MenuPresentation.LYRICS_COMPACT
         // Original ArchiveTune/Material3 bottom sheet: same full-height modifier,
         // colours, handle and horizontal padding. Material keeps ownership of
         // drag, partialExpand/expand/hide and the LazyColumn nested scroll.
         // Our previous bespoke Dialog accidentally deleted and broke them.
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        val sheetState = androidx.compose.runtime.key(compactLyrics) {
+            // Compact lyrics must not use the old hidden half-expanded anchor.
+            rememberModalBottomSheetState(skipPartiallyExpanded = compactLyrics)
+        }
         val playerAppearance = state.presentation != MenuPresentation.STANDARD
         val dismissPull = remember { Animatable(0f) }
         val sheetColor = capsuleMenuOpaqueSurface(
@@ -295,7 +278,8 @@ fun BottomSheetMenu(
             // attached to the SAME native slide-down. Never runs while
             // dragging or holding Back; no extra layout animation.
             modifier = modifier.then(
-                Modifier.fillMaxHeight()
+                if (compactLyrics) Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.76f).dp)
+                else Modifier.fillMaxHeight()
             ).graphicsLayer {
                 transformOrigin = TransformOrigin(0.5f, 0.75f)
                 val scale = capsuleMenuDismissScale(dismissPull.value)
@@ -329,110 +313,6 @@ fun BottomSheetMenu(
                             .padding(horizontal = 16.dp),
                 ) {
                     state.content(this)
-                }
-            }
-        }
-    }
-}
-
-/**
- * Lyrics-only "More" is always a real, bottom-aligned, bounded surface.
- * It does not depend on Material3's partially-expanded anchor, which can
- * leave only a dim/shimmer overlay visible above a fullscreen lyrics player.
- * The standard player/queue More menus keep the original anchored sheet.
- */
-@Composable
-private fun CompactLyricsMoreDialog(
-    state: MenuState,
-    background: Color,
-) {
-    val generation = state.generation
-    val configuration = LocalConfiguration.current
-    val sheetColor = capsuleMenuOpaqueSurface(
-        requested = background,
-        themeSurface = MaterialTheme.colorScheme.surface,
-        themeSurfaceHigh = MaterialTheme.colorScheme.surfaceContainerHigh,
-    )
-    val shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
-
-    // The lyrics player uses a fullscreen graphics layer; native partial sheet
-    // anchors can be hidden behind it on some devices. Keep this dedicated
-    // Dialog, but give it the same bottom-entry and soft retreat as other More.
-    val reveal = remember(state) { Animatable(0f) }
-    var measuredHeightPx by remember { mutableIntStateOf(0) }
-    LaunchedEffect(state.dismissRequested, generation) {
-        if (state.dismissRequested) {
-            reveal.animateTo(0f, tween(durationMillis = 230))
-            state.completeAnimatedDismiss(generation)
-        } else {
-            reveal.animateTo(1f, tween(durationMillis = 300))
-        }
-    }
-
-    Dialog(
-        onDismissRequest = state::dismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-            Box(
-                Modifier.fillMaxSize().clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = state::dismiss,
-                ),
-            )
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(
-                        min = 180.dp,
-                        max = (configuration.screenHeightDp * 0.76f).dp,
-                    )
-                    .onSizeChanged { measuredHeightPx = it.height }
-                    .graphicsLayer {
-                        val visible = reveal.value.coerceIn(0f, 1f)
-                        transformOrigin = TransformOrigin(0.5f, 0.75f)
-                        translationY = measuredHeightPx.toFloat() * (1f - visible)
-                        val scale = capsuleMenuDismissScale(1f - visible)
-                        scaleX = scale
-                        scaleY = scale
-                    },
-                shape = shape,
-                color = sheetColor,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .drawWithCache {
-                            onDrawBehind { drawRect(capsuleMenuGrain) }
-                        }
-                        .padding(horizontal = 16.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier
-                                .size(width = 40.dp, height = 4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                ),
-                        )
-                    }
-                    CompositionLocalProvider(
-                        LocalCapsuleMenuPressGuard provides true,
-                        LocalOverscrollFactory provides null,
-                    ) {
-                        state.content(this@Column)
-                    }
                 }
             }
         }
