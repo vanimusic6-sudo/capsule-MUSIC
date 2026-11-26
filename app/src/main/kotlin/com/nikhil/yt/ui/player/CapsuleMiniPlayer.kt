@@ -872,6 +872,7 @@ private fun CapsuleMiniPlayButton(
 ) {
     val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
     var decodedMini by remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) { mutableStateOf<Painter?>(null) }
+    val artworkMotion = LocalPlayerArtworkMotion.current
 
     Box(
         contentAlignment =
@@ -945,11 +946,11 @@ private fun CapsuleMiniPlayButton(
                     Modifier
                         .fillMaxSize()
                         .background(
-                            Color.Black.copy(
-                                alpha = 0.4f,
-                            ),
+                            Color.Black.copy(alpha = 0.4f),
                             CircleShape,
-                        ),
+                        ).graphicsLayer {
+                            alpha = if (mediaMetadata?.id?.let { artworkMotion?.ownsArtwork(it) } == true) 0f else 1f
+                        },
                 )
 
                 Icon(
@@ -969,7 +970,9 @@ private fun CapsuleMiniPlayButton(
                     tint =
                         Color.White,
                     modifier =
-                        Modifier.size(20.dp),
+                        Modifier.size(20.dp).graphicsLayer {
+                            alpha = if (mediaMetadata?.id?.let { artworkMotion?.ownsArtwork(it) } == true) 0f else 1f
+                        },
                 )
             }
         }
