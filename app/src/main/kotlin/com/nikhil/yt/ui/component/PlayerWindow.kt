@@ -71,6 +71,9 @@ internal fun PlayerWindow(
         !state.isDismissed && (state.isExpandedOrExpanding || state.isAnimationRunning ||
             state.compactOpenPress || playerPageVisible(state.visualProgress))
     } }
+    val sceneTransitioning by remember(state) { derivedStateOf {
+        state.isAnimationRunning || state.compactOpenPress || (state.isExpandedOrExpanding && !state.isExpanded)
+    } }
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
     val sourceDraws by remember(state) { derivedStateOf {
         !state.isDismissed && playerMiniDrawAlpha(state.visualProgress) > 0f
@@ -155,8 +158,10 @@ internal fun PlayerWindow(
                 ) {
                     // Exactly one opaque scene beneath the outer opacity. All
                     // styles, photos, blur and controls retain native layout.
-                    CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides
-                        (pageDraws && !state.isAnimationRunning)) {
+                    CompositionLocalProvider(
+                        LocalCapsuleBackgroundMotionEnabled provides (pageDraws && !state.isAnimationRunning),
+                        LocalPlayerSceneTransition provides sceneTransitioning,
+                    ) {
                         Box(Modifier.fillMaxSize().background(backgroundColor)) {
                             Box(Modifier.fillMaxSize(), content = backgroundContent)
                             Box(Modifier.fillMaxSize(), content = content)
@@ -167,3 +172,6 @@ internal fun PlayerWindow(
         }
     }
 }
+
+/** A cached artwork enters with the page instead of starting a separate reveal. */
+internal val LocalPlayerSceneTransition = staticCompositionLocalOf { false }
