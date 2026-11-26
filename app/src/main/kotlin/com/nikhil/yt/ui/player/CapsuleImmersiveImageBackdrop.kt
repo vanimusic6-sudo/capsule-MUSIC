@@ -14,6 +14,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.sin
@@ -145,8 +146,70 @@ private fun capsuleImmersiveRejectSmallMarks(field: CapsuleColorField): CapsuleC
     })
 }
 
+/**
+ * Population-based background selection, inspired by the palette principle of
+ * Metrolist's PlayerColorExtractor (GPL-3.0), independently implemented here.
+ * Require both broad coverage and agreement around the visible artwork perimeter.
+ * A vivid face, logo or isolated stripe cannot recolour a neutral/solid sleeve.
+ */
+internal fun capsuleImmersiveDominantGround(field: CapsuleColorField): Color? {
+    if (field.width < 2 || field.height < 2 || field.cells.isEmpty()) return null
+    val buckets = IntArray(4096)
+    val borderBuckets = IntArray(4096)
+    val edge = BooleanArray(field.cells.size)
+    var edgeCount = 0
+    fun bucket(c: Color): Int =
+        ((c.red * 15f + 0.5f).toInt().coerceIn(0, 15) shl 8) or
+            ((c.green * 15f + 0.5f).toInt().coerceIn(0, 15) shl 4) or
+            (c.blue * 15f + 0.5f).toInt().coerceIn(0, 15)
+    for ((index, c) in field.cells.withIndex()) {
+        val x = index % field.width
+        val y = index / field.width
+        val isEdge = x < (field.width / 6).coerceAtLeast(1) ||
+            x >= field.width - (field.width / 6).coerceAtLeast(1) ||
+            y >= field.height * 3 / 4 || y < field.height / 8
+        val key = bucket(c)
+        buckets[key]++
+        if (isEdge) {
+            edge[index] = true
+            edgeCount++
+            borderBuckets[key]++
+        }
+    }
+    val candidates = buckets.indices.filter { borderBuckets[it] > 0 }
+        .sortedByDescending { buckets[it] + borderBuckets[it] * 2 }.take(6)
+    var bestScore = 0f
+    var best: Color? = null
+    for (key in candidates) {
+        val r = (key shr 8 and 15) / 15f
+        val g = (key shr 4 and 15) / 15f
+        val b = (key and 15) / 15f
+        var count = 0
+        var border = 0
+        var sumR = 0f; var sumG = 0f; var sumB = 0f
+        for ((index, c) in field.cells.withIndex()) {
+            val dr = c.red - r; val dg = c.green - g; val db = c.blue - b
+            if (dr * dr + dg * dg + db * db > 0.0196f) continue
+            count++
+            if (edge[index]) border++
+            sumR += c.red; sumG += c.green; sumB += c.blue
+        }
+        val coverage = count.toFloat() / field.cells.size
+        val edgeCoverage = border.toFloat() / edgeCount.coerceAtLeast(1)
+        if (coverage < 0.55f || edgeCoverage < 0.70f) continue
+        val score = coverage + 2f * edgeCoverage
+        if (score > bestScore) {
+            bestScore = score
+            best = Color(sumR / count, sumG / count, sumB / count)
+        }
+    }
+    return best
+}
+
 /** Broad visible-image colour, used only as a loading/base tone, never as a seam scanline. */
 internal fun capsuleImmersiveVisibleMean(field: CapsuleColorField): Color {
+    if (field.cells.isEmpty()) return IMMERSIVE_NEUTRAL_COLOR
+    capsuleImmersiveDominantGround(field)?.let { return it }
     var r = 0f; var g = 0f; var b = 0f
     for (c in field.cells) { r += c.red; g += c.green; b += c.blue }
     return Color(r / field.cells.size, g / field.cells.size, b / field.cells.size)
@@ -183,7 +246,7 @@ private fun gaussianWeights(size: Int, sigma: Float) = FloatArray(size * size).a
 }
 
 private val backdropHorizontalWeights = gaussianWeights(PAGE_COLUMNS, PAGE_COLUMNS * 0.16f)
-private val backdropVerticalWeights = gaussianWeights(PAGE_ROWS, PAGE_ROWS * 0.10f)
+private val backdropVerticalWeights = gaussianWeights(PAGE_ROWS, PAGE_ROWS * 0.12f)
 
 private class SplineAxis(output: Int, source: Int) {
     val indices = IntArray(output * 4)
@@ -237,10 +300,9 @@ internal fun capsuleImmersiveBackdropSourceX(
 }
 
 /**
- * Reflect the actual sampled lower photo smoothly into the continuation.
- * The previous source Y stayed pinned at 0.82 over a large region, forming
- * a perfectly horizontal flat band. Both halves now join at 0.82 without
- * any clamped plateau, then diffuse deeper into the picture.
+ * Extend the lower colour field without reflecting the photograph.
+ * Sample a narrow band of the actual edge with a bounded spatial variation;
+ * never sweep back through the face or other upper artwork content.
  */
 internal fun capsuleImmersiveBackdropSourceY(
     pageX: Float, pageY: Float, stageFraction: Float,
@@ -251,10 +313,10 @@ internal fun capsuleImmersiveBackdropSourceY(
     }
     val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
     val envelope = sin(PI.toFloat() * progress).let { it * it }
-    val curved = 0.045f * envelope * cos(
+    val spread = 0.065f * envelope * (0.55f + 0.45f * cos(
         2f * PI.toFloat() * (pageX * 0.93f + pageY * 0.43f)
-    )
-    return (IMMERSIVE_VISIBLE_SAMPLE_END - progress * 0.43f + curved)
+    ))
+    return (IMMERSIVE_VISIBLE_SAMPLE_END - spread)
         .coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END)
 }
 
@@ -262,6 +324,7 @@ internal fun capsuleImmersiveBackdropSourceY(
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
     val raw = FloatArray(PAGE_COLUMNS * PAGE_ROWS * 3)
+    val ground = capsuleImmersiveDominantGround(field)
     fun sample(x: Float, y: Float): Color {
         val px = (x * field.width - 0.5f).coerceIn(0f, field.width - 1f)
         val py = (y * field.height - 0.5f).coerceIn(0f, field.height - 1f)
@@ -274,7 +337,12 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
         val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
         val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
-        val color = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
+        val edgeColor = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
+        val t = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+        val mix = t * t * (3f - 2f * t)
+        // Only strongly supported single-colour artwork receives the solid floor.
+        // Multicolour artwork retains its left/right photographic diffusion.
+        val color = if (ground != null) lerp(edgeColor, ground, mix * 0.92f) else edgeColor
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }
