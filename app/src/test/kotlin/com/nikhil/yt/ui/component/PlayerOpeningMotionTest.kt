@@ -235,9 +235,13 @@ class PlayerOpeningMotionTest {
             val shell = playerPresentationOpacity(p)
             val coverage = shell + mini * (1f - shell)
             assertTrue("No optical hole during the handoff", coverage >= 0.985f)
-            assertEquals(shell, playerClassicSurfaceAlpha(p), 0f)
-            assertEquals(mini, playerClassicMiniAlpha(p), 0f)
-            assertEquals(playerContentOpacity(p), playerClassicContentAlpha(p), 0f)
+            val classicShell = playerClassicSurfaceAlpha(p)
+            val classicMini = playerClassicMiniAlpha(p)
+            assertTrue("Classic player retains coverage at the dock",
+                classicShell + classicMini * (1f - classicShell) >= 0.99f)
+            assertEquals(classicShell, playerClassicContentAlpha(p), 0f)
+            assertEquals(classicShell, playerClassicBackdropAlpha(p), 0f)
+            if (classicMini == 0f) assertEquals(1f, classicShell, 0.00001f)
             assertTrue(playerMiniApproach(p) in 0.99f..1f)
             assertTrue(playerMiniHeightScale(p) in 0.99f..1f)
             if (mini == 0f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
@@ -247,6 +251,27 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerNavigationTuck(0f), 0f)
         assertEquals(1f, playerMiniApproach(0f), 0f)
         assertEquals(1f, playerMiniApproach(1f), 0f)
+    }
+
+    @Test fun classicMiniDoesNotFlyWithExpandedSheetAndContentDoesNotStretch() {
+        for (density in listOf(1f, 2f, 3.5f)) {
+            for (i in 0..1000) {
+                val p = i / 1000f
+                val travel = 640f * density * p
+                val remaining = 640f * density - travel
+                val dockOffset = -travel + playerClassicMiniCounterTravel(travel) +
+                    playerClassicMiniDockLift(p, density)
+                assertTrue(dockOffset in (-5.001f * density)..0.001f)
+                val lead = playerClassicContentLead(p, remaining, density)
+                assertTrue(lead <= 0f && -lead <= remaining)
+                assertTrue(-lead <= 28.8f * density + 0.001f)
+            }
+            assertEquals(0f, playerClassicContentLead(1f, 0f, density), 0f)
+            assertEquals(0f, playerClassicMiniDockLift(0f, density), 0f)
+        }
+        assertEquals(0f, playerClassicMiniCounterTravel(-100f), 0f)
+        assertEquals(0f, playerClassicMiniCounterTravel(Float.NaN), 0f)
+        assertEquals(0f, playerClassicContentLead(0.5f, Float.NaN, 1f), 0f)
     }
 
     @Test fun travelRespondsEarlyAndSettlesWithoutRebound() {
