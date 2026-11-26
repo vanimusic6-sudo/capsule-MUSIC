@@ -579,7 +579,9 @@ fun BottomSheetPlayer(
     BottomSheet(
         state = state,
         modifier = modifier,
-        backgroundColor = playerSurfaceColor(useBlackBackground),
+        backgroundColor = if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE && !videoPlaybackState.presentingVideo)
+            warmedImmersiveTone?.takeIf { it.ready }?.edge ?: playerSurfaceColor(useBlackBackground)
+        else playerSurfaceColor(useBlackBackground),
         // Full-player transitions are tap-to-open / Android-Back-to-close.
         // Only the docked Mini retains its independent swipe-down-to-clear gesture.
         gesturesEnabled = false,
