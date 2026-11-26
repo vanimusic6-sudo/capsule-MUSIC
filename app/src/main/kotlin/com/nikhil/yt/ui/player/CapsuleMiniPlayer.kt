@@ -55,6 +55,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
 import com.nikhil.yt.ui.component.playerMiniMaterialAlpha
+import com.nikhil.yt.ui.component.playerMiniBadgeAlpha
+import com.nikhil.yt.ui.component.playerMiniDrawAlpha
 import com.nikhil.yt.ui.component.playerArtworkEndpoint
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -733,7 +735,13 @@ internal fun MiniPlayerSurface(
     }
     Box(modifier) {
         val materialModifier = Modifier.matchParentSize()
-            .graphicsLayer { alpha = transition?.let { playerMiniMaterialAlpha(it.progress) } ?: 1f }
+            .graphicsLayer {
+                alpha = transition?.let {
+                    val p = it.progress
+                    val outer = playerMiniDrawAlpha(p)
+                    if (outer <= 0.0001f) 0f else (playerMiniMaterialAlpha(p) / outer).coerceIn(0f, 1f)
+                } ?: 1f
+            }
         if (style == MiniPlayerBackgroundStyle.GLASS) {
             CapsuleGlassSurface(
                 colors = colors,
@@ -949,7 +957,7 @@ private fun CapsuleMiniPlayButton(
                             Color.Black.copy(alpha = 0.4f),
                             CircleShape,
                         ).graphicsLayer {
-                            alpha = if (mediaMetadata?.id?.let { artworkMotion?.ownsArtwork(it) } == true) 0f else 1f
+                            alpha = artworkMotion?.let { playerMiniBadgeAlpha(it.progress) } ?: 1f
                         },
                 )
 
@@ -971,7 +979,7 @@ private fun CapsuleMiniPlayButton(
                         Color.White,
                     modifier =
                         Modifier.size(20.dp).graphicsLayer {
-                            alpha = if (mediaMetadata?.id?.let { artworkMotion?.ownsArtwork(it) } == true) 0f else 1f
+                            alpha = artworkMotion?.let { playerMiniBadgeAlpha(it.progress) } ?: 1f
                         },
                 )
             }
