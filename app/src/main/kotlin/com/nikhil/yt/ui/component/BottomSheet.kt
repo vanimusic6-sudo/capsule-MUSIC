@@ -218,12 +218,12 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
  * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.015f, 0.30f)
+    playerPresentationOpacity(progress)
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
-internal const val PLAYER_CLASSIC_MINI_FADE_END = 0.52f
+internal const val PLAYER_CLASSIC_MINI_FADE_END = PLAYER_MINI_FADE_END
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0.16f, PLAYER_CLASSIC_MINI_FADE_END)
+    playerMiniDrawAlpha(progress)
 
 /** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
@@ -243,7 +243,7 @@ internal fun playerClassicMiniCounterTravel(travelPx: Float): Float =
 
 /** A short magnetic lift, only while the original Mini is still visible. */
 internal fun playerClassicMiniDockLift(progress: Float, density: Float): Float =
-    -5f * density * transitionWindow(progress, 0f, 0.36f)
+    -5f * density * playerPhase(progress, 0f, 0.36f)
 
 /** Reveal the full-size artwork through the growing contour with restrained parallax.
  * Its bottom never leaves the viewport: the lead is always smaller than remaining travel. */
@@ -251,7 +251,7 @@ internal fun playerClassicContentLead(progress: Float, remainingPx: Float, densi
     if (!remainingPx.isFinite() || !density.isFinite() || density <= 0f || remainingPx <= 0f) return 0f
     val limit = 36f * density
     return -0.8f * remainingPx * (limit / (remainingPx + limit)) *
-        transitionWindow(progress, 0.045f, 0.40f)
+        playerPhase(progress, 0f, 0.40f)
 }
 
 internal fun shouldRenderExpandedSurface(
@@ -306,7 +306,7 @@ internal fun playerFrameCornerRadius(
     // ArchiveTune-like stable upper corners, with a smooth final 12% resolution
     // instead of dropping the radius in one frame. Generic sheets unchanged.
     val finish = if (holdVisibleCorner)
-        CapsuleMotion.smooth(((p - 0.88f) / 0.12f).coerceIn(0f, 1f))
+        playerPhase(p, 0.40f, 0.92f)
     else CapsuleMotion.smooth(p)
     return (collapsedRadius * (1f - finish)).coerceAtLeast(0.dp)
 }
@@ -321,12 +321,13 @@ internal fun playerFrameHorizontalScale(
     progress: Float,
     widthPx: Float,
     collapsedInsetPx: Float,
+    physicalPlayer: Boolean = false,
 ): Float {
     if (!widthPx.isFinite() || widthPx <= 0f) return 1f
     val safeInset = collapsedInsetPx.coerceIn(0f, widthPx * 0.25f)
     val collapsedScale = ((widthPx - safeInset * 2f) / widthPx).coerceIn(0.5f, 1f)
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
-    val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
+    val eased = if (physicalPlayer) playerPhase(p, 0f, 0.60f) else CapsuleMotion.smooth(p)
     return collapsedScale + (1f - collapsedScale) * eased
 }
 
@@ -391,8 +392,8 @@ fun BottomSheet(
         remember(state) {
             derivedStateOf {
                 shouldRenderExpandedSurface(state.visualProgress, state.isDismissed) ||
-                    (state.playerMotion && state.classicPlayerPresentation &&
-                        state.isExpandedOrExpanding)
+                    (state.playerMotion && state.classicPlayerPresentation && !state.isDismissed &&
+                        (state.isExpandedOrExpanding || state.isAnimationRunning || state.compactOpenPress))
             }
         }
     val renderExpandedContent by
@@ -402,8 +403,8 @@ fun BottomSheet(
                     state.visualProgress, state.isDismissed,
                     if (state.classicPlayerPresentation) PlayerClassicContentMountThreshold
                     else state.contentHandoffPoint,
-                ) || (state.playerMotion && state.classicPlayerPresentation &&
-                    state.isExpandedOrExpanding)
+                ) || (state.playerMotion && state.classicPlayerPresentation && !state.isDismissed &&
+                    (state.isExpandedOrExpanding || state.isAnimationRunning || state.compactOpenPress))
             }
         }
 
@@ -506,7 +507,8 @@ fun BottomSheet(
                         .fillMaxSize()
                         .graphicsLayer {
                             val raw = state.visualProgress
-                            val frameScale = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx())
+                            val frameScale = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx(),
+                                physicalPlayer = state.classicPlayerPresentation)
                             transformOrigin = TransformOrigin(0.5f, 0f)
                             val radius = playerFrameCornerRadius(
                                 raw, collapsedTopCornerRadius,
@@ -523,6 +525,7 @@ fun BottomSheet(
                                 clip = raw < 1f
                                 // One composited photo + controls surface, no double fade.
                                 alpha = surfaceAlpha(raw)
+                                shadowElevation = playerFrameShadowDp(raw).dp.toPx()
                             } else {
                                 scaleX = frameScale
                                 shape = RoundedCornerShape(topStart = radius, topEnd = radius)
@@ -568,6 +571,14 @@ fun BottomSheet(
                                 .graphicsLayer {
                                     if (state.classicPlayerPresentation) {
                                         alpha = 1f
+                                        val p = state.visualProgress
+                                        // Preserve native artwork proportions and cover the visible window.
+                                        // The width contour sets the minimum uniform scale: no side gaps.
+                                        val contentScale = maxOf(playerPresentationScale(p),
+                                            playerFrameHorizontalScale(p, size.width, collapsedHorizontalInset.toPx(), true))
+                                        scaleX = contentScale
+                                        scaleY = contentScale
+                                        transformOrigin = TransformOrigin(0.5f, 0f)
                                         translationY = playerClassicContentLead(
                                             state.visualProgress,
                                             (state.expandedBound - state.value).toPx(),
@@ -911,13 +922,24 @@ class BottomSheetState internal constructor(
                 return@anchoredDrag
             }
 
+            // A critically damped spring can still cross an anchor when released
+            // with substantial velocity. Never turn such a crossing into mini dismissal.
+            val expanded = anchors.positionOf(SheetAnchor.Expanded)
+            val collapsed = anchors.positionOf(SheetAnchor.Collapsed)
+            val dismissed = anchors.positionOf(SheetAnchor.Dismissed)
+            val lower = if (latestTarget == SheetAnchor.Dismissed || start < collapsed)
+                (if (dismissed.isFinite()) dismissed else collapsed) else collapsed
+            val safeVelocity = if (initialVelocity.isFinite()) initialVelocity else 0f
             animate(
                 initialValue = start,
                 targetValue = targetOffset,
-                initialVelocity = initialVelocity,
+                initialVelocity = safeVelocity,
                 animationSpec = animationSpec,
             ) { animatedValue, animatedVelocity ->
-                dragTo(animatedValue, animatedVelocity)
+                if (playerMotion && lower.isFinite() && expanded.isFinite() && lower <= expanded) {
+                    val bounded = animatedValue.coerceIn(lower, expanded)
+                    dragTo(bounded, if (bounded == animatedValue) animatedVelocity else 0f)
+                } else dragTo(animatedValue, animatedVelocity)
             }
         }
     }
@@ -943,7 +965,7 @@ class BottomSheetState internal constructor(
             // First open or a geometry/layout switch: compose the destination while the real
             // mini remains still. Do not spend the first moving frame constructing a player.
             // A single frame (not a timer) also works on 60/90/120 Hz screens.
-            if (playerMotion && requested == SheetAnchor.Expanded && playerPageNeedsFirstFrame) {
+            if (playerMotion && !classicPlayerPresentation && requested == SheetAnchor.Expanded && playerPageNeedsFirstFrame) {
                 withFrameNanos { }
                 if (requestedAnchor != requested) return@launch
                 playerPageNeedsFirstFrame = false
@@ -971,11 +993,11 @@ class BottomSheetState internal constructor(
     }
 
     private fun collapse() {
-        launchAnimation(SheetAnchor.Collapsed, BottomSheetSettleAnimationSpec)
+        launchAnimation(SheetAnchor.Collapsed, if (playerMotion) PlayerCloseAnimation else BottomSheetSettleAnimationSpec)
     }
 
     private fun expand() {
-        launchAnimation(SheetAnchor.Expanded, BottomSheetSettleAnimationSpec)
+        launchAnimation(SheetAnchor.Expanded, if (playerMotion) PlayerOpenAnimation else BottomSheetSettleAnimationSpec)
     }
 
     fun collapseSoft() {
@@ -1124,7 +1146,9 @@ class BottomSheetState internal constructor(
 
         animateToAnchor(
             target = target,
-            animationSpec = BottomSheetSettleAnimationSpec,
+            animationSpec = if (playerMotion) {
+                if (target == SheetAnchor.Expanded) PlayerOpenAnimation else PlayerCloseAnimation
+            } else BottomSheetSettleAnimationSpec,
             initialVelocity = velocity,
         )
 
