@@ -172,12 +172,9 @@ internal fun PlayerWindow(
                                         Brush.horizontalGradient(listOf(it.first, it.second))
                                     }
                                     onDrawWithContent {
-                                        val p = state.visualProgress
-                                        // One source material under one destination. Do not
-                                        // fade the source and destination against a third color.
-                                        val reveal = if (atomicScene) playerAtomicSceneAlpha(p)
-                                            else playerMaterialReveal(p)
-                                        if (bridge != null && reveal < 1f) drawRect(bridge)
+                                        // Keep the same base underneath for the whole trip;
+                                        // the destination fades over it, not through a third color.
+                                        if (bridge != null) drawRect(bridge)
                                         else drawRect(backgroundColor)
                                         drawContent()
                                     }
@@ -206,8 +203,11 @@ internal fun PlayerWindow(
                                     val p = state.visualProgress
                                     val frame = playerPresentationBounds(p, size.width, size.height,
                                         size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
-                                    translationY = if (atomicScene) 0f else playerPresentationContentY(p, frame.top, density)
-                                    alpha = if (atomicScene) playerAtomicSceneAlpha(p) else playerContentOpacity(p)
+                                    // Full-bleed photographs reveal from their TOP, not
+                                    // through a moving crop of their lower half. Light keeps
+                                    // the destination measured at its actual final position.
+                                    translationY = if (atomicScene) playerAtomicContentY(frame.top) else 0f
+                                    alpha = if (atomicScene) playerAtomicSceneAlpha(p) else artwork.foregroundOpacity()
                                 },
                                 content = content,
                             )
