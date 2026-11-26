@@ -253,7 +253,7 @@ class PlayerOpeningMotionTest {
             if (classicMini == 0f) assertEquals(1f, classicShell, 0.00001f)
             assertTrue(playerMiniApproach(p) in 0.964f..1f)
             assertTrue(playerMiniHeightScale(p) in 0.980f..1f)
-            if (p >= 0.56f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
+            if (p >= 0.74f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
         }
         assertTrue(playerNavigationTuck(0.18f) > 0.58f)
         assertEquals(1f, playerNavigationTuck(0.32f), 0f)
@@ -326,7 +326,7 @@ class PlayerOpeningMotionTest {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
         assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 15f..18f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 9f..11f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -352,7 +352,7 @@ class PlayerOpeningMotionTest {
         assertEquals("the frame follows the actual anchor without extra deformation",
             295f, halfway.top, 0.001f)
         assertTrue("the actual Mini is present during the close handoff",
-            playerMiniDrawAlpha(0.35f) > 0f)
+            playerMiniDrawAlpha(0.20f) > 0f)
     }
 
     @Test fun embeddedLyricsPaletteIsReadableEvenForWhiteOrEmptyCovers() {
@@ -417,8 +417,8 @@ class PlayerOpeningMotionTest {
             val frame = playerPresentationBounds(p, with(compose.density) { 360.dp.toPx() },
                 with(compose.density) { 700.dp.toPx() }, with(compose.density) { 590.dp.toPx() },
                 with(compose.density) { 48.dp.toPx() }, with(compose.density) { 12.dp.toPx() })
-            assertEquals("content follows its clipped, physical source",
-                playerPresentationContentY(p, frame.top, compose.density.density), a.y, 2f)
+            assertEquals("Light stays in its final layout underneath the shared artwork",
+                0f, a.y, 2f)
             val poster = rawBounds("poster")
             assertEquals(with(compose.density) { 180.dp.toPx() } * actualScale, poster.width, 2f)
             assertEquals("cover stays attached to its moving content",
@@ -511,7 +511,7 @@ class PlayerOpeningMotionTest {
             val p = i / 1000f
             val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
             for (start in listOf(0f, 0.005f, 0.10f)) {
-                val art = playerArtworkBounds(dock, target, playerPhase(p, start, 1f))
+                val art = playerContainedArtworkBounds(dock, target, playerArtworkTravel(p, start), frame)
                 assertTrue(art.left >= frame.left - 0.001f && art.top >= frame.top - 0.001f)
                 assertTrue(art.right <= frame.right + 0.001f && art.bottom <= frame.bottom + 0.001f)
             }
@@ -530,6 +530,32 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, lastMini, 0f)
         assertEquals(1f, playerMiniMaterialAlpha(0f), 0f)
         assertEquals(0f, playerAtomicSceneAlpha(0f), 0f)
+        assertEquals(0f, playerSharedForegroundOpacity(0.74f), 0f)
+        assertEquals(1f, playerSharedForegroundOpacity(0.94f), 0f)
+        assertEquals(0f, playerAtomicContentY(Float.NaN), 0f)
+    }
+
+    @Test fun sharedTravelDoesNotExposeDuplicateDestinationOrCropThePhoto() {
+        val dock = androidx.compose.ui.geometry.Rect(22f, 594f, 62f, 634f)
+        for (target in listOf(
+            androidx.compose.ui.geometry.Rect(56f, 48f, 304f, 296f),
+            androidx.compose.ui.geometry.Rect(12f, 12f, 348f, 540f),
+            androidx.compose.ui.geometry.Rect(120f, 72f, 240f, 192f),
+        )) {
+            var lastForeground = 0f
+            for (i in 0..1000) {
+                val p = i / 1000f
+                val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
+                val art = playerContainedArtworkBounds(dock, target, playerArtworkTravel(p, 0.005f), frame)
+                assertTrue(art.left >= frame.left - 0.001f && art.top >= frame.top - 0.001f)
+                assertTrue(art.right <= frame.right + 0.001f && art.bottom <= frame.bottom + 0.001f)
+                val foreground = playerSharedForegroundOpacity(p)
+                assertTrue(foreground >= lastForeground - 0.00001f)
+                if (p <= 0.74f) assertEquals(0f, foreground, 0f)
+                assertEquals(frame.top, playerAtomicContentY(frame.top), 0f)
+                lastForeground = foreground
+            }
+        }
     }
 
     @Test fun sharedBoundsRemainFiniteAndReversibleWithAsymmetricInsets() {
@@ -588,7 +614,7 @@ class PlayerOpeningMotionTest {
             val p = compose.runOnIdle { state.visualProgress }
             if (!sampled && p in 0.15f..0.5f) {
                 val a = pagePoint(0f, 0f)
-                assertTrue(a.y > 0f)
+                assertEquals(0f, a.y, 2f)
                 capture("surface-closing").recycle(); sampled = true
             }
         }
