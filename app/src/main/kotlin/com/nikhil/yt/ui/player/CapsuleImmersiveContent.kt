@@ -160,13 +160,19 @@ internal val ImmersiveControlInk = Color.White
 
 internal data class ImmersiveMetadataInk(val title: Color, val artist: Color)
 
-/** Change only metadata over near-white pixels; the rest of the controls stay white. */
+/** Choose readable metadata ink from the prepared image; leave transport controls unchanged. */
 internal fun immersiveMetadataInk(background: Color): ImmersiveMetadataInk {
-    val nearWhite = background.luminance() >= 0.70f &&
+    val light = background.luminance()
+    // Bright yellow/cyan artwork needs the same readable ink as white paper.
+    // Use the actual prepared background, not a saturation-based exception.
+    val nearWhite = light >= 0.70f &&
         maxOf(background.red, background.green, background.blue) -
         minOf(background.red, background.green, background.blue) <= 0.16f
-    return if (nearWhite) ImmersiveMetadataInk(Color(0xFF545451), Color(0xFF545451).copy(alpha = 0.82f))
-        else ImmersiveMetadataInk(Color.White, Color.White.copy(alpha = 0.62f))
+    return when {
+        nearWhite -> ImmersiveMetadataInk(Color(0xFF545451), Color(0xFF545451).copy(alpha = 0.82f))
+        light >= 0.32f -> ImmersiveMetadataInk(Color(0xFF242424), Color(0xFF242424).copy(alpha = 0.88f))
+        else -> ImmersiveMetadataInk(Color.White, Color.White.copy(alpha = if (light > 0.14f) 0.92f else 0.72f))
+    }
 }
 
 private fun immersiveMetadataBackground(bitmap: ImageBitmap?, fraction: Float): Color {
