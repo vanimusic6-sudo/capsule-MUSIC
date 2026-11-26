@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -28,6 +31,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -52,6 +59,11 @@ internal fun PlayerWindow(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
+    val insets = WindowInsets.systemBars
+    val layoutDirection = LocalLayoutDirection.current
+    val localDensity = LocalDensity.current
+    val leftInset = with(localDensity) { miniInset.toPx() } + insets.getLeft(localDensity, layoutDirection)
+    val rightInset = with(localDensity) { miniInset.toPx() } + insets.getRight(localDensity, layoutDirection)
     val artwork = remember(state) { PlayerArtworkMotion(state) }
     val interaction = remember(state) { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -81,7 +93,7 @@ internal fun PlayerWindow(
         state.isExpandedOrExpanding && playerPageAcceptsInput(state.visualProgress)
     } }
     val intercept by remember(state) { derivedStateOf {
-        !compactInteractive && playerSceneShouldInterceptTouch(
+        playerSceneShouldInterceptTouch(
             state.visualProgress, state.isExpandedOrExpanding, state.isDismissed)
     } }
     // Only the eligibility/identity changes cause a write. No per-frame bitmap
@@ -108,7 +120,13 @@ internal fun PlayerWindow(
                 .then(if (intercept) Modifier.pointerInput(state) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        if (!state.isExpandedOrExpanding || !playerPageAcceptsInput(state.visualProgress)) {
+                        val p = state.visualProgress
+                        val dockTop = (state.expandedBound - state.collapsedBound).toPx() -
+                            12.dp.toPx() * playerPhase(p, 0f, 0.40f)
+                        val compactHit = state.compactForegroundAcceptsInput &&
+                            down.position.x in leftInset..(size.width - rightInset) &&
+                            down.position.y in dockTop..(dockTop + miniHeight.toPx())
+                        if (!compactHit && (!state.isExpandedOrExpanding || !playerPageAcceptsInput(p))) {
                             down.consume()
                             do {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -126,7 +144,7 @@ internal fun PlayerWindow(
                             .graphicsLayer {
                                 val p = state.visualProgress
                                 val frame = playerPresentationBounds(p, size.width, size.height,
-                                    size.height - state.collapsedBound.toPx(), miniHeight.toPx(), miniInset.toPx())
+                                    size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
                                 val contour = playerPageContour(p, miniRadius.toPx(), density)
                                 shape = PlayerWindowShape(frame, contour.radius, 0f)
                                 clip = p < 1f
@@ -158,7 +176,7 @@ internal fun PlayerWindow(
                                 Modifier.fillMaxSize().graphicsLayer {
                                     val p = state.visualProgress
                                     val frame = playerPresentationBounds(p, size.width, size.height,
-                                        size.height - state.collapsedBound.toPx(), miniHeight.toPx(), miniInset.toPx())
+                                        size.height - state.collapsedBound.toPx(), miniHeight.toPx(), leftInset, rightInset)
                                     translationY = playerPresentationContentY(p, frame.top, density)
                                     alpha = playerContentOpacity(p)
                                 },
@@ -171,25 +189,31 @@ internal fun PlayerWindow(
             if (onDismiss == null || !state.isDismissed) {
                 Box(
                     Modifier.zIndex(2f)
-                        .semantics { if (!compactInteractive) hideFromAccessibility() }
-                        .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(
-                            state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
-                            miniGestureArbiter = arbiter, compactDismissOnly = true,
-                        ) else Modifier)
-                        .clickable(enabled = compactInteractive, interactionSource = interaction,
-                            indication = null, onClick = state::expandSoft)
+                        // Position BEFORE input modifiers so the tap and swipe hit
+                        // targets coincide with the actual dock, including dismissal.
+                        .offset {
+                            IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx())
+                        }
                         .fillMaxWidth().height(miniHeight)
                         .graphicsLayer {
                             val p = state.visualProgress
                             val dismiss = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
-                            translationY = (state.expandedBound - state.collapsedBound).toPx() + dismiss -
-                                12.dp.toPx() * playerPhase(p, 0f, 0.40f)
+                            translationY = dismiss - 12.dp.toPx() * playerPhase(p, 0f, 0.40f)
                             val release = 1f - (1f - pressScale) * (1f - playerPhase(p, 0f, 0.18f))
                             scaleX = release
                             scaleY = release
                             transformOrigin = TransformOrigin(0.5f, 0.5f)
                             alpha = playerMiniDrawAlpha(p)
                         }
+                        .semantics { if (!compactInteractive) hideFromAccessibility() }
+                        .then(if (compactSwipeDismissEnabled && onDismiss != null && compactInteractive)
+                            Modifier.bottomSheetDraggable(
+                                state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
+                                miniGestureArbiter = arbiter, compactDismissOnly = true,
+                            ) else Modifier)
+                        .then(if (compactInteractive) Modifier.clickable(
+                            interactionSource = interaction, indication = null, onClick = state::expandSoft,
+                        ) else Modifier)
                         .drawWithContent { if (sourceDraws) drawContent() },
                 ) {
                     CompositionLocalProvider(
