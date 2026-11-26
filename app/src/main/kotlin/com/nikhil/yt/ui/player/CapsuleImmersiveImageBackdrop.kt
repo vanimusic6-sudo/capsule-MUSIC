@@ -411,12 +411,12 @@ internal fun capsuleImmersiveBackdropSourceX(
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
     val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
     val eased = progress * progress * (3f - 2f * progress)
-    val widthScale = 1f - (1f - stage) * eased
+    val widthScale = 1f - (1f - maxOf(stage, 0.78f)) * eased
     // The old affine X map created long, ruler-straight colour columns
     // regardless of the artwork. A bounded two-dimensional displacement
     // bends the *precomputed* colour field, not the sharp photograph.
-    // It is exactly zero at the cover seam and bottom, so neither boundary
-    // acquires a new mismatch. No frame-clock, GPU blur or allocations.
+    // It is exactly zero at the cover seam. Below it the field keeps
+    // broad lateral color regions; no frame-clock or GPU blur.
     val envelope = immersiveSmootherStep(0f, 0.55f, progress)
     // A broad, elliptical colour-cloud drift rather than a tiny pixel wiggle.
     // The original 5.5% warp vanished into the horizontal Gaussian blur;
@@ -426,7 +426,8 @@ internal fun capsuleImmersiveBackdropSourceX(
     val crossFlow = cos(2f * PI.toFloat() * (pageY * 0.68f - pageX * 0.36f + 0.13f))
     // Maintain a gentle off-centre drift all the way down instead of
     // returning to a symmetrical central column at the bottom.
-    val bend = envelope * (0.13f * flow + 0.035f * crossFlow)
+    val bend = envelope * (0.13f * flow + 0.035f * crossFlow) -
+        0.045f * immersiveSmootherStep(0.62f, 1f, progress)
     return (0.5f + (pageX - 0.5f) * widthScale + bend).coerceIn(0f, 1f)
 }
 
