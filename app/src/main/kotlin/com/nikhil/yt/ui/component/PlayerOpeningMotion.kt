@@ -30,8 +30,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 390f
-internal const val PLAYER_CLOSE_STIFFNESS = 490f
+internal const val PLAYER_OPEN_STIFFNESS = 305f
+internal const val PLAYER_CLOSE_STIFFNESS = 355f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -74,7 +74,8 @@ private fun window(progress: Float, start: Float, end: Float): Float =
 
 /** The app stays stationary; a restrained shadow gives the arriving surface depth. */
 internal fun playerSceneDim(progress: Float): Float = 0.24f * window(progress, 0f, 0.84f)
-internal fun playerSceneScale(progress: Float): Float = 1f - 0.025f * boundedProgress(progress)
+// Backdrop is sampled by the glass Mini. Scaling Home shifts that capture.
+internal fun playerSceneScale(progress: Float): Float = 1f
 internal fun playerFrameShadowDp(progress: Float): Float {
     val p = boundedProgress(progress)
     return 10f * 4f * p * (1f - p)
@@ -86,7 +87,7 @@ internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress
  * its final layout; only its GPU outline and a uniformly scaled content layer move.
  * No bitmap snapshot, placeholder plate, second colour field or stretched artwork.
  */
-internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
+internal fun playerPageVisible(progress: Float): Boolean = playerPresentationOpacity(progress) > 0f
 internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.92f
 
 /**
@@ -105,11 +106,12 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.25f
+internal const val PLAYER_MINI_FADE_END = 0.34f
 internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0f, 0.32f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSoftPhase(progress, 0.02f, PLAYER_MINI_FADE_END)
-internal fun playerPresentationOpacity(progress: Float): Float = if (boundedProgress(progress) > 0f) 1f else 0f
+    1f - playerSoftPhase(progress, 0.075f, PLAYER_MINI_FADE_END)
+// The tail is a real compact material handoff, not an opaque sheet sinking behind Mini.
+internal fun playerPresentationOpacity(progress: Float): Float = playerSoftPhase(progress, 0.035f, 0.24f)
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 // The shell is opaque; only incoming foreground fades in. The shared cover
 // draws above this layer, so its pixels never inherit a second opacity.
@@ -121,15 +123,19 @@ internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
 // Opacity phases have soft endpoints, but geometry follows the physical progress.
 // The compact material turns into the real destination, not a second moving card.
 internal fun playerMaterialReveal(progress: Float): Float = playerSoftPhase(progress, 0.08f, 0.63f)
-internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0f, 0.12f)
+internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.07f, 0.24f)
+internal fun playerMiniBadgeAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.035f, 0.24f)
+internal fun playerSharedSourceAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.07f, 0.23f)
+internal fun playerSharedDestinationAlpha(progress: Float): Float = playerSoftPhase(progress, 0.88f, 0.98f)
+internal fun playerSharedOverlayAlpha(progress: Float): Float = playerSoftPhase(progress, 0.07f, 0.23f) * (1f - playerSharedDestinationAlpha(progress))
 internal fun playerAtomicSceneAlpha(progress: Float): Float = playerSoftPhase(progress, 0.12f, 0.68f)
 internal fun playerContentOpacity(progress: Float): Float = playerSoftPhase(progress, 0.28f, 0.74f)
 // Shared artwork is allowed to pass across the destination title/transport area.
 // Keep that foreground out of its path until the cover is almost at its slot.
-internal fun playerSharedForegroundOpacity(progress: Float): Float = playerSoftPhase(progress, 0.74f, 0.94f)
+internal fun playerSharedForegroundOpacity(progress: Float): Float = playerSoftPhase(progress, 0.60f, 0.92f)
 internal fun playerArtworkTravel(progress: Float, start: Float): Float {
-    val t = playerPhase(progress, start, 1f)
-    return t + 0.18f * t * (1f - t)
+    // No extra acceleration before the aperture has room for the photo.
+    return playerPhase(progress, start, 0.98f)
 }
 internal fun playerAtomicContentY(frameTop: Float): Float = if (frameTop.isFinite()) frameTop.coerceAtLeast(0f) else 0f
 
@@ -157,7 +163,12 @@ internal fun playerPresentationContentY(
  * than descending as an opaque fullscreen rectangle. It is reversible and monotonic,
  * and the same transform applies to a finger-driven transition or an interrupted spring.
  */
-internal fun playerFrameGeometryProgress(progress: Float): Float = boundedProgress(progress)
+internal fun playerFrameGeometryProgress(progress: Float): Float {
+    val p = boundedProgress(progress)
+    // Finish at the exact dock while the real Mini takes ownership. C1 join
+    // to the physical trajectory at 0.24, no trailing rectangle at rest.
+    return p * playerSoftPhase(p, 0.035f, 0.24f)
+}
 
 internal fun playerPresentationBounds(
     progress: Float,
