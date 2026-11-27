@@ -48,12 +48,19 @@ internal class VideoCdnRedirectInterceptor(
         val network = networkIdentity()
         val clean = origin.newBuilder().removeHeader("Authorization").removeHeader("Cookie")
             .removeHeader("X-Goog-AuthUser").removeHeader("X-Goog-PageId").build()
-        val shortcut = memory.get(network, origin.url)
+        val shortcut = memory.get(network, origin.url)?.takeUnless {
+            VideoRejectedLinks.isRejected(it.toString())
+        }
         var current = if (shortcut != null) clean.newBuilder().url(shortcut).build() else clean
         var usingShortcut = shortcut != null
         val visited = mutableSetOf<HttpUrl>()
         repeat(6) {
             if (networkIdentity() != network) throw IOException("VIDEO network changed during CDN open")
+            if (VideoRejectedLinks.isRejected(current.url.toString())) {
+                VideoRejectedLinks.reject(origin.url.toString())
+                memory.forget(network, origin.url)
+                throw VideoRetiredLinkException()
+            }
             if (!visited.add(current.url)) throw IOException("VIDEO CDN redirect loop")
             val response = try {
                 chain.proceed(current)
@@ -62,6 +69,8 @@ internal class VideoCdnRedirectInterceptor(
                 throw failure
             }
             if (usingShortcut && response.code in setOf(403, 404, 410)) {
+                if (response.code == 403 || response.code == 410)
+                    VideoRejectedLinks.reject(current.url.toString())
                 response.close()
                 memory.forget(network, origin.url)
                 usingShortcut = false

@@ -54,9 +54,12 @@ internal class CapsuleVideoLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(1) {
 internal class CapsuleVideoLinkDataSource(private val upstream: DataSource) : DataSource {
     override fun open(dataSpec: DataSpec): Long {
         val url = dataSpec.uri.toString()
-        val googleVideo = dataSpec.uri.scheme == "https" &&
-            dataSpec.uri.host?.endsWith(".googlevideo.com", ignoreCase = true) == true
-        if (googleVideo && VideoRejectedLinks.isRejected(url)) throw VideoRetiredLinkException()
+        // Validate before DefaultDataSource can open a local file/content URI
+        // supplied by an HLS child playlist or encryption-key reference.
+        if (!com.nikhil.yt.innertube.video.VideoStreamValidation.isSupportedUrl(url))
+            throw IOException("Untrusted VIDEO media address")
+        val googleVideo = true
+        if (VideoRejectedLinks.isRejected(url)) throw VideoRetiredLinkException()
         val start = System.nanoTime()
         try {
             return upstream.open(dataSpec).also {

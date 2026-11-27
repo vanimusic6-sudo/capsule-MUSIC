@@ -179,6 +179,12 @@ object YouTubeVideoResolver {
     @Volatile
     private var initialized = false
 
+    // Terminal transport failure must evict metadata even when there is no retry slot.
+    internal fun retireLocalStream(videoId: String) {
+        cache.invalidate(videoId)
+        CapsuleWebVideoExtractor.invalidateCachedInventory()
+    }
+
     fun invalidate(videoId: String) {
         CapsuleWebVideoExtractor.invalidateCachedInventory()
         val id = videoId.trim()

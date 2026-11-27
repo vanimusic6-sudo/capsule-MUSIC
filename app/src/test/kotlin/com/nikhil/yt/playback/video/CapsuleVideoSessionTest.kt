@@ -102,10 +102,12 @@ class CapsuleVideoSessionTest {
         val buffering = mutableListOf<Boolean>()
         val failures = mutableListOf<Throwable>()
         val endings = mutableListOf<String>()
+        val sustained = mutableListOf<String>()
         val session = CapsuleVideoSession(music.player, clip.player, scope,
             { owned += it; music.volume = if (it) 0f else 1f },
             { frames += it }, { _, error -> failures += error }, { endings += it },
-            { hidden += it }, { _, loading -> buffering += loading }, clockMs = { clockMs })
+            { hidden += it }, { _, loading -> buffering += loading }, clockMs = { clockMs },
+            onSustainedPlayback = { sustained += it })
         fun start() {
             session.setSurfaceAttached(true)
             session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f)
@@ -577,6 +579,28 @@ class CapsuleVideoSessionTest {
         assertEquals(1, f.failures.size)
         assertTrue(f.failures.single() is java.net.SocketTimeoutException)
         assertEquals(1f, f.music.volume)
+        f.session.stop()
+    }
+
+    @Test fun readyButFrozenVideoClockRestoresMusic() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        assertEquals(0f, f.music.volume)
+        advanceTimeBy(14_100); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertEquals(1f, f.music.volume)
+        f.session.stop()
+    }
+
+    @Test fun sustainedClockProgressRearmsVideoRecoveryWithoutFalseStalls() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        repeat(17) {
+            f.clip.position += 2_000L
+            advanceTimeBy(2_000); runCurrent()
+        }
+        assertTrue(f.failures.isEmpty())
+        assertEquals(listOf("song"), f.sustained)
         f.session.stop()
     }
 

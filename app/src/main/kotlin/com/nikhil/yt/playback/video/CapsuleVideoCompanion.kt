@@ -180,6 +180,7 @@ internal class CapsuleVideoCompanion(
     readStudioPlan: (String) -> CapsuleTrackSound? = { null },
     publishStudioPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
     readStudioInteractive: () -> Boolean = { false },
+    onSustainedPlayback: (String) -> Unit = {},
 ) {
     private var idleExpiry: Job? = null
     private val renderers = CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false,
@@ -212,6 +213,7 @@ internal class CapsuleVideoCompanion(
     internal val frameRetention = CapsuleVideoFrameRetention(player, scope)
     private val session = CapsuleVideoSession(
         audio, player, scope, onSoundOwned, onReady, onFailure, onEnded, onFrameUnavailable, onBufferingChanged,
+        onSustainedPlayback = onSustainedPlayback,
     )
     init {
         player.addAnalyticsListener(object : AnalyticsListener {
@@ -300,6 +302,7 @@ internal class CapsuleVideoSession(
     private val onFrameUnavailable: (String) -> Unit,
     private val onBufferingChanged: (String, Boolean) -> Unit = { _, _ -> },
     private val clockMs: () -> Long = SystemClock::elapsedRealtime,
+    private val onSustainedPlayback: (String) -> Unit = {},
 ) {
     private var id: String? = null
     private var generation = 0L
@@ -752,7 +755,8 @@ internal class CapsuleVideoSession(
     private fun needsWatchdog(): Boolean = id != null && audio.playWhenReady &&
         ((foreground && !surfaceAttached && !surfaceEverAttachedForSession && !committed) ||
             (rendering && !frameReported) ||
-            ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING))
+            ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING) ||
+            (committed && video.playbackState == Player.STATE_READY && video.isPlaying))
 
     private fun ensureWatchdog() {
         if (!needsWatchdog()) {
@@ -767,18 +771,38 @@ internal class CapsuleVideoSession(
             var startupIdleMs = 0L
             var stallMs = 0L
             var rebufferMs = 0L
+            var frozenClockMs = 0L
+            var healthyClockMs = 0L
+            var reportedHealthy = false
             var previousBufferedMs = video.bufferedPosition
             var previousPositionMs = video.currentPosition
             var previousFrameRevision = renderedFrameRevision
             while (id == currentId && generation == lease) {
-                delay(500L)
+                val healthySample = committed && video.playbackState == Player.STATE_READY && video.isPlaying
+                val tickMs = if (healthySample) 2_000L else 500L
+                delay(tickMs)
+                if (id != currentId || generation != lease || !needsWatchdog()) break
+                val clockActive = committed && video.playbackState == Player.STATE_READY && video.isPlaying
+                // Healthy playback needs only a cheap clock sample, not a repeated UI/priority update.
+                if (!clockActive) evaluate()
                 if (id != currentId || generation != lease) break
-                if (!needsWatchdog()) break
-                evaluate()
+                val position = video.currentPosition
+                val positionDelta = position - previousPositionMs
                 val progressed = video.bufferedPosition > previousBufferedMs ||
-                    video.currentPosition > previousPositionMs || renderedFrameRevision != previousFrameRevision
+                    position != previousPositionMs || renderedFrameRevision != previousFrameRevision
+                if (healthySample && clockActive) {
+                    frozenClockMs = if (positionDelta == 0L) frozenClockMs + tickMs else 0L
+                    healthyClockMs = if (positionDelta in 1L..(tickMs * 4L)) healthyClockMs + tickMs else 0L
+                    if (!reportedHealthy && healthyClockMs >= 30_000L) {
+                        reportedHealthy = true
+                        onSustainedPlayback(currentId)
+                    }
+                } else {
+                    frozenClockMs = 0L
+                    healthyClockMs = 0L
+                }
                 previousBufferedMs = video.bufferedPosition
-                previousPositionMs = video.currentPosition
+                previousPositionMs = position
                 previousFrameRevision = renderedFrameRevision
                 // No first-frame timeout with a detached/minimized player.
                 // On the first cold launch the TextureView may never attach.
@@ -808,12 +832,12 @@ internal class CapsuleVideoSession(
                 // healthy long clip at eight seconds while it is still synchronizing.
                 // Keep both the no-progress deadline and a hard overall startup bound.
                 if (startupIdleMs >= startupBudgetMs || startupMs >= 30_000L ||
-                    stallMs >= 12_000L || rebufferMs >= 30_000L
+                    stallMs >= 12_000L || rebufferMs >= 30_000L || frozenClockMs >= 12_000L
                 ) {
                     Timber.tag("CapsuleVideo").w(
-                        "VIDEO readiness timeout surface=%s frame=%s selectedAudio=%s videoState=%s playing=%s musicMs=%s videoMs=%s rebufferMs=%s",
+                        "VIDEO readiness timeout surface=%s frame=%s selectedAudio=%s videoState=%s playing=%s musicMs=%s videoMs=%s rebufferMs=%s frozenClockMs=%s",
                         surfaceAttached, firstFrame, hasAudio, video.playbackState,
-                        video.isPlaying, audio.currentPosition, video.currentPosition, rebufferMs,
+                        video.isPlaying, audio.currentPosition, video.currentPosition, rebufferMs, frozenClockMs,
                     )
                     fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break

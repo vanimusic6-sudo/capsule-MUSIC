@@ -1172,6 +1172,14 @@ class MusicService :
                     CapsuleVideoRequestGuard.noteVideoRenderedSuccessfully()
                 }
             },
+            onSustainedPlayback = { currentId ->
+                if (videoPlaybackState.value.mediaId == currentId &&
+                    player.currentMediaItem?.mediaId == currentId
+                ) {
+                    videoRecoveryAttempts = 0
+                    Timber.tag("CapsuleVideo").i("VIDEO recovery budget reset after sustained playback id=%s", currentId)
+                }
+            },
             onFailure = { failedId, failure -> recoverVideoSession(failedId, failure) },
             onEnded = { endedId -> finishCapsuleVideoTrack(endedId) },
             onFrameUnavailable = { currentId ->
@@ -1286,6 +1294,7 @@ class MusicService :
         val guard = CapsuleVideoRequestGuard.snapshot().takeIf { it.blockedUntilMs > System.currentTimeMillis() }
         restoreMusicAfterVideoFailure()
         com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.remove(mediaId)
+        activeResolvedVideo?.let { YouTubeVideoResolver.retireLocalStream(it.videoId) }
         Timber.tag("CapsuleVideo").w(failure, "VIDEO session failed; original MUSIC continues")
         videoPlaybackState.value = state.copy(
             preferredMode = CapsulePlaybackMode.AUDIO, mode = CapsulePlaybackMode.AUDIO,
