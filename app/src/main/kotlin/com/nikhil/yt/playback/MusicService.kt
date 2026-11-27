@@ -1286,6 +1286,9 @@ class MusicService :
         val state = videoPlaybackState.value
         if (state.mediaId != mediaId || state.preferredMode != CapsulePlaybackMode.VIDEO) return
         restoreMusicAfterVideoFailure()
+        // The old native producer must not compete for bandwidth with MUSIC
+        // or the replacement resolve after its Media3 children were stopped.
+        com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.remove(mediaId)
         val stream = activeResolvedVideo
         val recoverable = generateSequence(failure) { it.cause }.take(8).any {
             it is java.io.IOException ||

@@ -61,6 +61,8 @@ jobs:
           --tests 'com.nikhil.yt.playback.audio.AudioResolveSchedulerTest'
           --tests 'com.nikhil.yt.playback.audio.AudioResolveCoordinatorTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.*'
+          --tests 'com.nikhil.yt.playback.audio.PlaybackDataCacheTest'
           --tests 'com.nikhil.yt.playback.audio.AudioChunkedDataSourceTest'
           --tests 'com.nikhil.yt.playback.audio.CapsuleSabrAudioDataSourceTest'
           --tests 'com.nikhil.yt.playback.audio.CapsuleSabrRoutePolicyTest'

@@ -9,6 +9,9 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import androidx.media3.common.C
+import androidx.media3.datasource.DataSourceException
 import org.junit.Test
 
 /**
@@ -85,6 +88,46 @@ class SabrVideoTransportTest {
             assertEquals(a.size, audio.readCovered(0, outA, 0, outA.size))
             assertArrayEquals(v, outV)
             assertArrayEquals(a, outA)
+        } finally {
+            video.release(true)
+            audio.release(true)
+        }
+    }
+
+    @Test fun requestedVideoRangeIsBoundedAndEndOfResourceIsValid() {
+        assertEquals(20L, sabrVideoReadableBytes(100L, 10L, 20L))
+        assertEquals(10L, sabrVideoReadableBytes(100L, 90L, 20L))
+        assertEquals(90L, sabrVideoReadableBytes(100L, 10L, C.LENGTH_UNSET.toLong()))
+        assertEquals(0L, sabrVideoReadableBytes(100L, 100L, 20L))
+        try {
+            sabrVideoReadableBytes(100L, 101L, 20L)
+            throw AssertionError("Expected position-out-of-range failure")
+        } catch (expected: DataSourceException) {
+            assertTrue(DataSourceException.isCausedByPositionOutOfRange(expected))
+        }
+    }
+
+    @Test fun headerWithoutMediaDoesNotAdvanceOrSuppressTheNextRealSegment() {
+        val v = byteArrayOf(1, 2, 3)
+        val a = byteArrayOf(4, 5)
+        val headers = part(SabrUmp.MEDIA_HEADER, trackHeader(1, 136, v.size)) +
+            part(SabrUmp.MEDIA_HEADER, trackHeader(2, 140, a.size))
+        var posts = 0
+        val http = OkHttpClient.Builder().addInterceptor { chain ->
+            posts++
+            val body = if (posts == 1) headers else headers +
+                part(SabrUmp.MEDIA, umpVar(1) + v) + part(SabrUmp.MEDIA, umpVar(2) + a)
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                .code(200).message("OK").body(body.toResponseBody()).build()
+        }.build()
+        val video = buffer(v.size.toLong(), "sabrv")
+        val audio = buffer(a.size.toLong(), "sabra")
+        try {
+            SabrVideoSession(videoConfig(v.size.toLong(), a.size.toLong()), http, video, audio).run()
+            assertEquals(2, posts)
+            assertTrue(video.completeFromZero())
+            assertTrue(audio.completeFromZero())
+            assertFalse(video.failed())
         } finally {
             video.release(true)
             audio.release(true)

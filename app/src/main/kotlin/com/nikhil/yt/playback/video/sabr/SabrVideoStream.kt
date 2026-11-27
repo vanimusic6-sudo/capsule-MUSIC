@@ -10,10 +10,14 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSourceException
+import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSpec
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 
 /**
  * A single dual-track SABR session shared by the two ExoPlayer [DataSource]s of a `MergingMediaSource`
@@ -48,6 +52,7 @@ internal class SabrVideoStream(
     private var session: SabrVideoSession? = null
     private var destroyed = false
     private var sessionStartedAtMs = 0L
+    private fun monotonicMs(): Long = System.nanoTime() / 1_000_000L
     private var restartAttempts = 0
     private var seekMarginMs = SabrSeekLogic.SEEK_MARGIN_MS
     @Volatile private var lastVideoReadEnd = -1L
@@ -63,14 +68,19 @@ internal class SabrVideoStream(
     /** Blocking read on one track — covered serves, catch-ups and seek-restarts (see class doc). */
     fun read(video: Boolean, position: Long, into: ByteArray, offset: Int, length: Int): Int {
         val buffer = if (video) videoBuffer else audioBuffer
+        val readStartedAtMs = monotonicMs()
         while (true) {
+            if (Thread.currentThread().isInterrupted) throw InterruptedIOException("SABR video read cancelled")
             val n = buffer.readCovered(position, into, offset, length)
             if (n > 0) {
                 val continuous = position == (if (video) lastVideoReadEnd else lastAudioReadEnd)
-                if (restartAttempts != 0 &&
-                    SabrSeekLogic.resetsRestartBudget(continuous, System.currentTimeMillis() - sessionStartedAtMs)
-                ) {
-                    synchronized(this) { restartAttempts = 0; seekMarginMs = SabrSeekLogic.SEEK_MARGIN_MS }
+                synchronized(this) {
+                    if (restartAttempts != 0 &&
+                        SabrSeekLogic.resetsRestartBudget(continuous, monotonicMs() - sessionStartedAtMs)
+                    ) {
+                        restartAttempts = 0
+                        seekMarginMs = SabrSeekLogic.SEEK_MARGIN_MS
+                    }
                 }
                 if (video) lastVideoReadEnd = position + n else lastAudioReadEnd = position + n
                 return n
@@ -80,7 +90,15 @@ internal class SabrVideoStream(
                 if (destroyed) throw IOException("SABR video stream destroyed")
                 ensureSessionCovering(video, position)
             }
-            buffer.awaitChange(250)
+            if (monotonicMs() - readStartedAtMs >= READ_DEADLINE_MS) {
+                throw SocketTimeoutException("SABR video byte range did not become available")
+            }
+            try {
+                buffer.awaitChange(250)
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw InterruptedIOException("SABR video read cancelled").apply { initCause(interrupted) }
+            }
         }
     }
 
@@ -93,7 +111,7 @@ internal class SabrVideoStream(
         val anchor = if (alive) (if (video) s!!.firstVideoOffset else s!!.firstAudioOffset) else -1L
         when (val action = SabrSeekLogic.decide(
             sessionAlive = alive, anchor = anchor, position = position,
-            sinceStartMs = System.currentTimeMillis() - sessionStartedAtMs,
+            sinceStartMs = monotonicMs() - sessionStartedAtMs,
             restartAttempts = restartAttempts, durationMs = config.durationMs,
             contentLength = format.contentLength, marginMs = seekMarginMs,
         )) {
@@ -130,7 +148,7 @@ internal class SabrVideoStream(
             restartable = true,
         )
         session = s
-        sessionStartedAtMs = System.currentTimeMillis()
+        sessionStartedAtMs = monotonicMs()
         thread = Thread(s, "sabr-video-$mediaId").apply { isDaemon = true; start() }
     }
 
@@ -156,6 +174,7 @@ internal class SabrVideoStream(
 
     private companion object {
         const val TAG = "SabrVideoStream"
+        const val READ_DEADLINE_MS = 25_000L
         // Pacing windows: the drain stays this far ahead of each reader, no further.
         const val AHEAD_VIDEO_BYTES = 32L * 1024 * 1024
         const val AHEAD_AUDIO_BYTES = 8L * 1024 * 1024
@@ -214,14 +233,14 @@ internal class SabrVideoDataSource(private val client: OkHttpClient, private val
         uri = dataSpec.uri
         val id = SabrVideoRegistry.mediaId(dataSpec.uri) ?: throw IOException("SABR video: no media id in ${dataSpec.uri}")
         val s = SabrVideoRegistry.get(id) ?: throw IOException("SABR video: no session for $id")
-        stream = s
-        s.prepare(video, dataSpec.position)
         val length = (if (video) s.config.videoFormat else s.config.audioFormat).contentLength
+        bytesRemaining = sabrVideoReadableBytes(length, dataSpec.position, dataSpec.length)
+        stream = s
         position = dataSpec.position
-        bytesRemaining = if (length > 0) length - dataSpec.position else C.LENGTH_UNSET.toLong()
+        if (bytesRemaining > 0L) s.prepare(video, position)
         transferStarted(dataSpec)
         started = true
-        return bytesRemaining
+        return if (dataSpec.length == C.LENGTH_UNSET.toLong()) bytesRemaining else dataSpec.length
     }
 
     override fun read(target: ByteArray, offset: Int, readLength: Int): Int {
@@ -244,6 +263,15 @@ internal class SabrVideoDataSource(private val client: OkHttpClient, private val
         if (started) { transferEnded(); started = false }
         uri = null
     }
+}
+
+/** Resolve the actual readable range; open() separately reports the requested length. */
+internal fun sabrVideoReadableBytes(resourceLength: Long, position: Long, requestedLength: Long): Long {
+    if (position < 0L || position > resourceLength) {
+        throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
+    }
+    val remaining = resourceLength - position
+    return if (requestedLength == C.LENGTH_UNSET.toLong()) remaining else minOf(remaining, requestedLength)
 }
 
 /** Factory for one track's [SabrVideoDataSource]. */

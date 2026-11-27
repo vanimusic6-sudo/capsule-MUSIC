@@ -17,3 +17,9 @@ Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static aud
 - Measure effective throughput and headroom; choose quality only at safe representation boundaries. Keep cache identity format-aware; validate Range/Content-Range and refuse mismatched byte sequences.
 - Test network switch, stalled reads, trickle responses, short EOF, 403/410/429, cancellation, repeated seeks, offline cache, concurrent downloads, and long playback. Capture p50/p95 start, rebuffer ratio, retry count, bytes wasted, thermal state and battery. No credentials or signed URLs in logs.
 - This change is not a full engine rewrite and has not been validated on device.
+
+## Second review — transport contracts
+- SABR VIDEO DataSource now respects requested byte length, returns EOF at resource end, rejects out-of-range positions, bounds a blocking read to 25 seconds and maps thread interruption to InterruptedIOException. Uses monotonic seek timing.
+- SABR session cancellation is synchronized with call publication, obsolete failures cannot poison buffers after cancellation, 429 reaches the existing video cooldown, and no-media headers no longer acknowledge segments. Stop obsolete SABR producers before video recovery.
+- Audio URL TTL is monotonic (wall-clock changes cannot extend a cached URL lifetime). Signed URL expiry, range consistency and account/route context remain distinct.
+- Added transport regression cases for bounded reads and header-only responses. Existing media-core CI includes SABR tests and audio URL-cache tests. These changes still require successful CI and device tests.

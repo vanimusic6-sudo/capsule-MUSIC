@@ -11,6 +11,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
 import com.nikhil.yt.innertube.video.VideoStreamValidation
+import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import java.io.IOException
 import java.net.SocketTimeoutException
 import okhttp3.Call
@@ -82,7 +83,7 @@ internal class SabrVideoSession(
 
     @Volatile private var cancelled = false
     @Volatile private var activeCall: Call? = null
-    fun cancel() {
+    @Synchronized fun cancel() {
         cancelled = true
         activeCall?.cancel()
     }
@@ -93,7 +94,8 @@ internal class SabrVideoSession(
     private val maxIter: Int = ((config.durationMs / 1000L) * 3L + 1000L).coerceIn(1000L, 200_000L).toInt()
 
     /** Terminal failure of THIS session — see [SabrSession.failStream]. Marks/wakes BOTH tracks. */
-    private fun failStream(message: String, stall: Boolean, terminal: Boolean = false) {
+    @Synchronized private fun failStream(message: String, stall: Boolean, terminal: Boolean = false) {
+        if (cancelled) return
         if (stall) onIncomplete?.invoke()
         if (restartable && !terminal) { videoBuffer.notifyWaiters(); audioBuffer.notifyWaiters() }
         else { videoBuffer.markError(message); audioBuffer.markError(message) }
@@ -181,6 +183,12 @@ internal class SabrVideoSession(
             // Demand pacing: pause only while BOTH tracks are comfortably ahead of their readers.
             if (paceAheadVideoBytes > 0 || paceAheadAudioBytes > 0) awaitDualDemand()
             if (cancelled) return
+            if (videoBuffer.failed() || audioBuffer.failed()) return
+            if (CapsuleVideoRequestGuard.isBlocked()) {
+                failStream("VIDEO request cooldown active", stall = false, terminal = true)
+                return
+            }
+            val guardEpoch = CapsuleVideoRequestGuard.resetEpoch()
             val anySelected = video.lastSeq > 0 || audio.lastSeq > 0
             val body = SabrMessages.abrRequestVideo(
                 ustreamerConfig = config.ustreamerConfig,
@@ -209,10 +217,18 @@ internal class SabrVideoSession(
             // cannot allocate the size of an hour-long video into JVM heap.
             val postStartNs = System.nanoTime()
             val call = client.newCall(req)
-            activeCall = call
+            synchronized(this) {
+                if (cancelled) {
+                    call.cancel()
+                    return
+                }
+                activeCall = call
+            }
             val bytes = try {
                 call.execute().use { resp ->
+                    if (cancelled) return
                     if (!resp.isSuccessful) {
+                        CapsuleVideoRequestGuard.noteStreamStatus(resp.code, guardEpoch)
                         // A 403/429 or expired signed URL should trigger the
                         // upper-level backend failover, NOT six identical SABR
                         // retries against the same blocked endpoint.
@@ -283,6 +299,7 @@ internal class SabrVideoSession(
             // Write each new segment's media bytes at its ABSOLUTE offset into its track's buffer.
             val writeCursor = HashMap<Int, Long>()
             for (p in parts) {
+                if (cancelled) return
                 if (p.type != SabrUmp.MEDIA) continue
                 val (id, prefix) = SabrMessages.mediaHeaderId(p.payload)
                 if (id !in newIds) continue
@@ -290,13 +307,23 @@ internal class SabrVideoSession(
                 val t = tracks[header.itag] ?: continue
                 val cursor = writeCursor.getOrPut(id) { header.startRange }
                 val len = p.payload.size - prefix
-                t.buffer.writeAt(cursor, p.payload, prefix, len)
-                writeCursor[id] = cursor + len
+                if (len <= 0 || cursor < 0L || cursor >= t.format.contentLength) continue
+                val safeLen = minOf(len.toLong(), t.format.contentLength - cursor).toInt()
+                t.buffer.writeAt(cursor, p.payload, prefix, safeLen)
+                writeCursor[id] = cursor + safeLen
             }
             var newSeg = false
             for (h in headers.values) {
                 if (h.headerId !in newIds) continue
                 val t = tracks[h.itag] ?: continue
+                // A header alone is not media progress. Never acknowledge a
+                // segment for which no bytes (or a known incomplete range) arrived.
+                val writtenUntil = writeCursor[h.headerId] ?: continue
+                val written = writtenUntil - h.startRange
+                if (written <= 0L || h.startRange < 0L || h.startRange >= t.format.contentLength) continue
+                if (h.contentLength > 0L &&
+                    written < minOf(h.contentLength, t.format.contentLength - h.startRange)
+                ) continue
                 if (h.isInit) { t.initWritten = true } else {
                     t.seen.add(h.seq)
                     if (t.firstSeq == 0 || h.seq < t.firstSeq) { t.firstSeq = h.seq; t.firstMs = h.startMs }

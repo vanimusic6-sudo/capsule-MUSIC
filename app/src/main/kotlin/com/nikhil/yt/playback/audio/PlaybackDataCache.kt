@@ -3,7 +3,7 @@ package com.nikhil.yt.playback.audio
 /** Retain the complete extraction contract, including headers, loudness and tracking. */
 internal class PlaybackDataCache(
     private val capacity: Int = 128,
-    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val currentContext: () -> Any? = { null },
 ) {
     private data class Entry(
