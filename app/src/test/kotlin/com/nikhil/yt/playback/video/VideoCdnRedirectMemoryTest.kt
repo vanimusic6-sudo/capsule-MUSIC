@@ -14,7 +14,15 @@ class VideoCdnRedirectMemoryTest {
         assertEquals(target, memory.get(1L, origin))
         assertNull(memory.get(2L, origin))
         assertNull(memory.get(null, origin))
-        now = 60_001L
+        now = 180_001L
+        assertNull(memory.get(1L, origin))
+    }
+
+    @Test fun expiredSignedDestinationIsNeverReused() {
+        val memory = VideoCdnRedirectMemory { 0L }
+        val origin = "https://rr1.googlevideo.com/videoplayback?sig=1".toHttpUrl()
+        val target = "https://rr2.googlevideo.com/videoplayback?expire=1".toHttpUrl()
+        memory.remember(1L, origin, target)
         assertNull(memory.get(1L, origin))
     }
 

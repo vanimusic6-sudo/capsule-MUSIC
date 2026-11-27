@@ -104,6 +104,7 @@ object CapsuleInnerTubeXPlayer {
     private val streamClientFailures = TrackClientFailureCache()
     private val downloadStreamClientFailures = TrackClientFailureCache()
     private val downloadBotGate = DownloadBotCheckGate()
+    private val entitlementFailures = AudioEntitlementFailureMemory()
 
     fun downloadCooldownRemainingMs(): Long = downloadBotGate.remainingMs()
 
@@ -343,6 +344,11 @@ object CapsuleInnerTubeXPlayer {
                             // Decide after scheduling, using current readiness. A cold minter
                             // starts in an independent job and is never awaited by Vision.
                             val extractionBundle = bundle()
+                            val entitlementSession = extractionBundle.key
+                            entitlementFailures.get(entitlementSession, videoId)?.let { kind ->
+                                Timber.tag(TAG).d("AUDIO cached entitlement id=%s kind=%s", videoId, kind)
+                                throw AudioEntitlementException(kind)
+                            }
                             // Decide account entitlement from the SAME immutable session
                             // the extractor uses. An authorization change while this
                             // request waits in the background must not select an old plan.
@@ -399,6 +405,11 @@ object CapsuleInnerTubeXPlayer {
             )
         } catch (error: CancellationException) {
             throw error
+        } catch (error: AudioEntitlementException) {
+            if (priority != AudioResolvePriority.DOWNLOAD) {
+                com.nikhil.yt.playback.TrackAvailability.record(videoId, error.kind)
+            }
+            Result.failure(error)
         } catch (error: StreamResolveException) {
             if (priority != AudioResolvePriority.DOWNLOAD) {
                 com.nikhil.yt.playback.TrackAvailability.record(videoId,
@@ -477,6 +488,7 @@ object CapsuleInnerTubeXPlayer {
                 botSignalAlreadySeen = botSignalAlreadySeen,
                 attempted = sabrAttempts,
                 previousDirectFailures = previousDirectFailures,
+                directCandidateAvailable = plan.any { it !in attempted },
             )
             val profileId = if (forceSabr) {
                 // Exact experimental mode: do not silently fall back to Direct.
@@ -561,6 +573,15 @@ object CapsuleInnerTubeXPlayer {
                     videoId, profileId, kind,
                     (System.nanoTime() - attemptStartedNs).coerceAtLeast(0L) / 1_000_000L,
                 )
+
+                // A server-confirmed age wall is not a failed transport. Do not rotate
+                // clients, attempt SABR, or erase its cause with a later generic result.
+                // A logged-in entitlement failure may still use its existing account route.
+                val entitlement = terminalAudioEntitlement(kind, extractionBundle.innerTube.hasSapCookieAuth())
+                if (entitlement != null) {
+                    entitlementFailures.record(extractionBundle.key, videoId, entitlement)
+                    throw AudioEntitlementException(entitlement)
+                }
 
                 if (forceSabr) {
                     // Strict test: surface the failure; never retry another
@@ -781,6 +802,7 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun clearPlaybackState() {
+        entitlementFailures.clear()
         com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
         streamClientFailures.clear()
@@ -789,6 +811,7 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun onNetworkChanged() {
+        entitlementFailures.clear()
         com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
         streamClientFailures.clear()

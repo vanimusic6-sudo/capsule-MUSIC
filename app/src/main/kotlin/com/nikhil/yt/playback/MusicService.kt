@@ -496,7 +496,9 @@ internal fun PlaybackException.isNoPlayableStreamFailure(): Boolean =
         .take(8)
         .any { throwable ->
             val message = throwable?.message.orEmpty()
-            message.contains("No playable stream found for this track", ignoreCase = true) ||
+            throwable is com.nikhil.yt.playback.audio.AudioEntitlementException ||
+                message.contains("No safe AUDIO client profile is currently available", ignoreCase = true) ||
+                message.contains("No playable stream found for this track", ignoreCase = true) ||
                 message.contains("InnerTubeX returned no playable AUDIO stream", ignoreCase = true)
         }
 
@@ -4932,18 +4934,18 @@ class MusicService :
              * So the retry is skipped and the verdict recorded, which is what lets the message at
              * the end name the route rather than blame the queue.
              */
-            val authRequired =
-                PlaybackFailureClassifier.classify(error, isSignedIntoYouTube()) ==
-                    PlaybackFailureKind.AUTH_REQUIRED
-            if (authRequired) {
+            val failureKind = PlaybackFailureClassifier.classify(error, isSignedIntoYouTube())
+            val authRequired = failureKind == PlaybackFailureKind.AUTH_REQUIRED
+            if (failureKind in setOf(PlaybackFailureKind.AUTH_REQUIRED, PlaybackFailureKind.AGE_RESTRICTED,
+                    PlaybackFailureKind.ACCESS_RESTRICTED)) {
                 // An account wall is a terminal result for this selection, not
                 // permission to test three unrelated queue items.
                 queueSkipBlockedForMediaId = currentMediaId
-                val routeWide = authWallDetector.recordAuthRequired(currentMediaId)
+                val routeWide = authRequired && authWallDetector.recordAuthRequired(currentMediaId)
+                TrackAvailability.record(currentMediaId, failureKind)
                 Timber.tag(CAPSULE_RESOLVE_TAG).w(
-                    "Needs an account id=%s routeWide=%s; not asking the same way again",
-                    currentMediaId,
-                    routeWide,
+                    "AUDIO access denied id=%s kind=%s routeWide=%s; no transport retry",
+                    currentMediaId, failureKind, routeWide,
                 )
                 handleTerminalPlaybackError()
                 return
@@ -4954,7 +4956,7 @@ class MusicService :
             // stream". Let the bounded queue-failure guard choose the next song.
             if (playbackRecoveryCoordinator.hasTriedAlternativeCdnClient(currentMediaId)) {
                 Timber.tag("PlaybackRecovery").w(
-                    "cdn-failover-exhausted id=%s alternate=no-playable-stream; next item",
+                    "cdn-failover-exhausted id=%s alternate=no-playable-stream; terminal policy",
                     currentMediaId,
                 )
                 handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)

@@ -15,6 +15,8 @@ internal enum class PlaybackFailureKind {
 internal object PlaybackFailureClassifier {
     fun classify(error: Throwable, authenticated: Boolean): PlaybackFailureKind {
         val causes = error.failureChain()
+        causes.filterIsInstance<com.nikhil.yt.playback.audio.AudioEntitlementException>()
+            .firstOrNull()?.let { return it.kind }
         val text = causes.mapNotNull { it.message }.joinToString(" ")
         val textKind = YouTubeFailureClassifier.classify(text = text)
         if (textKind == YouTubeFailureKind.BOT_CHECK) return PlaybackFailureKind.BOT_CHECK

@@ -274,7 +274,8 @@ internal class CapsuleVideoCompanion(
         idleExpiry?.cancel()
         idleExpiry = if (keep) scope.launch {
             // One paused decoder, only for quick mode toggles. Standard Media3
-            // buffering remains bounded to 20 seconds; no custom LoadControl.
+            // decoder retention remains bounded to 20 seconds; no re-extraction
+            // or second decoder for repeated explicit AUDIO/VIDEO toggles.
             delay(20_000L)
             session.stop()
             idleExpiry = null
@@ -788,7 +789,8 @@ internal class CapsuleVideoSession(
                 if (id != currentId || generation != lease) break
                 val position = video.currentPosition
                 val positionDelta = position - previousPositionMs
-                val progressed = video.bufferedPosition > previousBufferedMs ||
+                val buffered = video.bufferedPosition
+                val progressed = buffered > previousBufferedMs ||
                     position != previousPositionMs || renderedFrameRevision != previousFrameRevision
                 if (healthySample && clockActive) {
                     frozenClockMs = if (positionDelta == 0L) frozenClockMs + tickMs else 0L
@@ -801,7 +803,7 @@ internal class CapsuleVideoSession(
                     frozenClockMs = 0L
                     healthyClockMs = 0L
                 }
-                previousBufferedMs = video.bufferedPosition
+                previousBufferedMs = buffered
                 previousPositionMs = position
                 previousFrameRevision = renderedFrameRevision
                 // No first-frame timeout with a detached/minimized player.

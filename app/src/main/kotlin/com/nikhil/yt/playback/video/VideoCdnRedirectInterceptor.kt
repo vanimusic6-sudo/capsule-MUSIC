@@ -17,14 +17,19 @@ internal class VideoCdnRedirectMemory(
     @Synchronized fun get(network: Long?, origin: HttpUrl): HttpUrl? {
         val key = (network ?: return null) to origin
         val entry = entries[key] ?: return null
-        if (entry.until <= nowMs()) { entries.remove(key); return null }
+        val expirySeconds = entry.target.queryParameter("expire")?.toLongOrNull()
+        if (entry.until <= nowMs() ||
+            (expirySeconds != null && expirySeconds <= System.currentTimeMillis() / 1000L + 15L)
+        ) { entries.remove(key); return null }
         return entry.target
     }
 
     @Synchronized fun remember(network: Long?, origin: HttpUrl, target: HttpUrl) {
         if (network == null || origin == target || origin.queryParameter("range") != null ||
             target.queryParameter("range") != null || !VideoStreamValidation.isSupportedUrl(target.toString())) return
-        entries[network to origin] = Entry(target, nowMs() + 60_000L)
+        // Successful ranges extend the short lease; a pause should not
+        // immediately cost another full redirect/TLS handshake.
+        entries[network to origin] = Entry(target, nowMs() + 180_000L)
         while (entries.size > 32) entries.remove(entries.keys.first())
     }
 
@@ -88,7 +93,8 @@ internal class VideoCdnRedirectInterceptor(
             if (target == null || !VideoStreamValidation.isSupportedUrl(target.toString())) {
                 throw IOException("Untrusted VIDEO CDN redirect")
             }
-            Timber.tag("CapsuleVideo").d("video-cdn-redirect from=%s to=%s", current.url.host, target.host)
+            if (com.nikhil.yt.utils.GlobalLog.isEnabled)
+                Timber.tag("CapsuleVideo").d("video-cdn-redirect from=%s to=%s", current.url.host, target.host)
             current = clean.newBuilder().url(target).build()
             usingShortcut = false
         }

@@ -12,12 +12,16 @@ internal object CapsuleSabrRoutePolicy {
         botSignalAlreadySeen: Boolean,
         attempted: Set<String>,
         previousDirectFailures: Int = 0,
+        directCandidateAvailable: Boolean = false,
     ): String? {
         // Never replay a previously failed SABR route during its per-track cooldown.
         // Direct CDN failures from prior Media3 reloads are as meaningful as
         // direct /player failures inside this one resolve.
         if (download || PROFILE in attempted) return null
         if (forceSabr) return PROFILE
+        // Actual UMP sessions repeatedly returned HTTP 200 with zero bytes.
+        // Exhaust eligible direct routes first; keep forced SABR for diagnosis.
+        if (directCandidateAvailable) return null
         return PROFILE.takeIf {
             priority == AudioResolvePriority.PLAYBACK &&
                 !botSignalAlreadySeen &&

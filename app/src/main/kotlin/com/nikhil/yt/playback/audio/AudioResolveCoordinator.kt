@@ -2,6 +2,7 @@ package com.nikhil.yt.playback.audio
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import java.util.concurrent.ConcurrentHashMap
@@ -45,7 +46,7 @@ internal class AudioResolveCoordinator<T>(
                 ?: run {
                     val generation = policyGeneration
                     scopeProvider()
-                        .async {
+                        .async(start = CoroutineStart.LAZY) {
                             block(generation)
                         }
                         .also { job ->
@@ -58,7 +59,8 @@ internal class AudioResolveCoordinator<T>(
                             }
                         }
                 }
-            if (loaderDemand) loaderDemands[mediaId] = shared
+            if (loaderDemand && !shared.isCompleted) loaderDemands[mediaId] = shared
+            shared.start()
             shared
         }
 

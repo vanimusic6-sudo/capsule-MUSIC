@@ -38,6 +38,13 @@ class CapsuleSabrRoutePolicyTest {
         ))
     }
 
+    @Test fun eligibleDirectClientTakesPrecedenceOverAutomaticSabr() {
+        assertNull(CapsuleSabrRoutePolicy.select(false, false, AudioResolvePriority.PLAYBACK,
+            false, emptySet(), previousDirectFailures = 2, directCandidateAvailable = true))
+        assertEquals(CapsuleSabrRoutePolicy.PROFILE, CapsuleSabrRoutePolicy.select(
+            true, false, AudioResolvePriority.PLAYBACK, false, emptySet(), directCandidateAvailable = true))
+    }
+
     @Test fun previousDirectFailuresNeverStartSabrInDownloadOrPrefetch() {
         assertNull(CapsuleSabrRoutePolicy.select(
             forceSabr = false, download = true, priority = AudioResolvePriority.DOWNLOAD,
