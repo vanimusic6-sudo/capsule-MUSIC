@@ -234,8 +234,8 @@ internal fun playerPresentationContentY(
 
 /**
  * Coordinates are in the root player's viewport, not in a separately measured overlay.
- * The source is the REAL compact bar (including its bottom-navigation gap), and the target is
- * EXACTLY (0, 0, width, height). Progress is reused on closing, including mid-flight reversal.
+ * The destination spans the viewport at every phase. Its vertical source is the real compact
+ * bar (including its bottom-navigation gap); the target is (0, 0, width, height).
  */
 /**
  * An asymmetric contour: on close the whole window contracts toward Mini sooner, rather
@@ -258,6 +258,8 @@ internal fun playerFrameGeometryProgress(progress: Float): Float {
     return span * t * t * t * (1f - 0.5f * t) / normalization
 }
 
+// Insets are retained in this internal signature for existing callers; only the dock uses them.
+@Suppress("UNUSED_PARAMETER")
 internal fun playerPresentationBounds(
     progress: Float,
     width: Float,
@@ -269,22 +271,23 @@ internal fun playerPresentationBounds(
     navigationHeight: Float = 0f,
 ): Rect {
     val p = playerFrameGeometryProgress(progress)
-    val leftInset = miniInset.coerceIn(0f, width * 0.5f)
-    val rightInset = miniRightInset.coerceIn(0f, width * 0.5f)
     val sourceTop = miniTop.coerceIn(0f, height)
     val sourceBottom = (sourceTop + miniHeight).coerceIn(sourceTop, height)
     return Rect(
-        left = leftInset * (1f - p),
+        left = 0f,
         top = sourceTop * (1f - p),
-        right = width - rightInset * (1f - p),
+        right = width,
         bottom = sourceBottom + playerLowerEdgeTravelPx(progress, height - sourceBottom, navigationHeight),
     )
 }
 
-internal class PlayerWindowShape(private val bounds: Rect, private val radius: Float, private val bleed: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
-        Outline.Rounded(RoundRect(Rect(bounds.left - bleed, bounds.top - bleed,
-            bounds.right + bleed, bounds.bottom + bleed), CornerRadius(radius, radius)))
+internal data class PlayerWindowShape(private val bounds: Rect, private val radius: Float, private val bleed: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val rect = if (bleed == 0f) bounds else Rect(bounds.left - bleed, bounds.top - bleed,
+            bounds.right + bleed, bounds.bottom + bleed)
+        return if (radius <= 0f) Outline.Rectangle(rect)
+        else Outline.Rounded(RoundRect(rect, CornerRadius(radius, radius)))
+    }
 }
 
 @Composable
@@ -333,11 +336,16 @@ internal data class PlayerFrameContour(
     val bleed: Float,
 )
 
-/** The mini's round corners follow the growing frame, then disappear outside the viewport. */
+/** Round corners follow the vertical frame, then resolve smoothly at fullscreen. */
+internal fun playerPageRadius(progress: Float, miniRadius: Float, density: Float): Float {
+    val p = boundedProgress(progress)
+    return ((miniRadius + (maxOf(miniRadius, 24f * density) - miniRadius) * playerSilkPhase(p, 0f, 0.45f)) *
+        (1f - playerSilkPhase(p, 0.64f, 1f))).coerceAtLeast(0f)
+}
+
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = (miniRadius + (maxOf(miniRadius, 24f * density) - miniRadius) * playerSilkPhase(p, 0f, 0.45f)) *
-        (1f - playerSilkPhase(p, 0.64f, 1f))
+    val radius = playerPageRadius(p, miniRadius, density)
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square

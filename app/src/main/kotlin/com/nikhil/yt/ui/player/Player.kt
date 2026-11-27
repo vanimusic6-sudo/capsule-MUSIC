@@ -594,8 +594,8 @@ fun BottomSheetPlayer(
         dismissOnlyFromCollapsed = true,
         backHandlerEnabled = false,
         collapsedContentHeight = MiniPlayerHeight,
-        // Match CapsuleMiniPlayer's real geometry so the full surface grows out of the card
-        // instead of appearing as an unrelated full-width page behind it.
+        // Keep the compact card inset for dock hit-testing; the destination is full-width
+        // from its first visible frame and inherits only the vertical dock geometry.
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
         // Paint the shell solid before artwork arrives; the old translucent material

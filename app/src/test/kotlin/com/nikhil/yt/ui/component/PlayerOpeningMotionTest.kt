@@ -469,22 +469,21 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerLowerEdgeTravelPx(0.5f, Float.NaN, 64f), 0f)
     }
 
-    @Test fun contourGrowsFromTheActualMiniBoundsOnDifferentViewports() {
-        for (height in listOf(360f, 700f, 1440f, 2560f)) {
-            val width = 360f
+    @Test fun fullWidthContourGrowsVerticallyFromTheMiniOnDifferentViewports() {
+        for (width in listOf(240f, 360f, 700f, 1440f)) for (height in listOf(360f, 700f, 1440f, 2560f)) {
             val top = height - 110f
-            val compact = playerPresentationBounds(0f, width, height, top, 48f, 12f)
-            assertEquals(12f, compact.left, 0f)
+            val compact = playerPresentationBounds(0f, width, height, top, 48f, 12f, 37f)
+            assertEquals(0f, compact.left, 0f)
             assertEquals(top, compact.top, 0f)
-            assertEquals(width - 12f, compact.right, 0f)
+            assertEquals(width, compact.right, 0f)
             assertEquals(top + 48f, compact.bottom, 0f)
             var previous = compact
             for (i in 0..1000) {
                 val p = i / 1000f
-                val frame = playerPresentationBounds(p, width, height, top, 48f, 12f)
+                val frame = playerPresentationBounds(p, width, height, top, 48f, 12f, 37f)
                 assertTrue(frame.top <= previous.top + 0.001f)
-                assertTrue(frame.left <= previous.left + 0.001f)
-                assertTrue(frame.right >= previous.right - 0.001f)
+                assertEquals("full width from the first frame", 0f, frame.left, 0f)
+                assertEquals(width, frame.right, 0f)
                 assertTrue(frame.bottom >= previous.bottom - 0.001f)
                 val miniLead = (frame.top - top) - playerMiniTravelPx(p, top, 1f, 0f)
                 assertTrue(miniLead in -0.001f..5.001f)

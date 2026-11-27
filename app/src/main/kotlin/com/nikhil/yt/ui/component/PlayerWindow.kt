@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.*
@@ -74,6 +73,7 @@ internal fun PlayerWindow(
         state.isAnimationRunning || state.compactOpenPress || (state.isExpandedOrExpanding && !state.isExpanded)
     } }
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
+    val liftShadowDraws by remember(state) { derivedStateOf { playerLiftShadowAlpha(state.visualProgress) > 0f } }
     val sourceDraws by remember(state) { derivedStateOf {
         !state.isDismissed && playerMiniDrawAlpha(state.visualProgress) > 0f
     } }
@@ -159,7 +159,7 @@ internal fun PlayerWindow(
                         val dockTop = (state.expandedBound - state.collapsedBound).toPx()
                         translationY = dockTop * (1f - playerFrameGeometryProgress(p)) - size.height
                     }
-                    .padding(horizontal = miniInset)
+                    .drawWithContent { if (liftShadowDraws) drawContent() }
                     .background(liftShadow),
             )
             key("capsule-player-window") {
@@ -188,7 +188,7 @@ internal fun PlayerWindow(
                                         (state.expandedBound - state.collapsedBound).toPx(),
                                         miniHeight.toPx(), leftInset, rightInset, navigationHeight.toPx())
                                     translationY = frame.top
-                                    val radius = playerPageContour(p, miniRadius.toPx(), density).radius
+                                    val radius = playerPageRadius(p, miniRadius.toPx(), density)
                                         .coerceAtMost(minOf(frame.width, frame.height) * 0.5f)
                                     shape = PlayerWindowShape(Rect(frame.left, 0f, frame.right, frame.height), radius, 0f)
                                     clip = true
