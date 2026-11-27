@@ -943,6 +943,7 @@ class MainActivity : ComponentActivity() {
                         playerBottomSheetState.isExpandedOrExpanding
                     LaunchedEffect(playerTakesKeyboardFocus) {
                         if (playerTakesKeyboardFocus) {
+                            val pendingSearch = active || openSearchImmediately
                             active = false
                             openSearchImmediately = false
                             focusManager.clearFocus(force = true)
@@ -950,9 +951,11 @@ class MainActivity : ComponentActivity() {
                             // IME show requests already posted by BasicTextField
                             // can arrive on the next choreographer traversal.
                             // Repeat once, never poll or delay any player frame.
-                            delay(90L)
-                            focusManager.clearFocus(force = true)
-                            keyboardController?.hide()
+                            if (pendingSearch) {
+                                delay(90L)
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                            }
                         }
                     }
 
