@@ -149,10 +149,11 @@ internal open class ProgressiveRangeSource(
     }
 
     private fun readNetwork(buffer: ByteArray, offset: Int, length: Int): Int {
-        val start = System.nanoTime()
+        val rate = plan?.rate?.takeIf { it.measures(length) }
+        val start = if (rate != null) System.nanoTime() else 0L
         try {
             val count = checkedRead(buffer, offset, length)
-            plan?.rate?.observeRead(length, count, (System.nanoTime() - start) / 1_000_000L)
+            rate?.observeRead(length, count, (System.nanoTime() - start) / 1_000_000L)
             return count
         } catch (failure: IOException) {
             if (plan == null || resumed || network != networkIdentity() ||

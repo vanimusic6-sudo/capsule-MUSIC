@@ -27,8 +27,8 @@ class DownloadResolveFailureClassificationTest {
         )
 
     @Test fun timeoutRetriesAreBoundedByCallerNotMistakenForBotCheck() {
-        assertTrue(shouldRetryDownloadResolve(PlayerRequestTimeoutException()))
-        assertTrue(shouldRetryDownloadResolve(IOException("wrapped", SocketTimeoutException("timed out"))))
+        assertTrue(isDownloadResolveTimeout(PlayerRequestTimeoutException()))
+        assertTrue(isDownloadResolveTimeout(IOException("wrapped", SocketTimeoutException("timed out"))))
         assertFalse(isLikelyDownloadThrottleSignal(PlayerRequestTimeoutException()))
         assertFalse(isLikelyDownloadThrottleSignal(SocketTimeoutException("timed out")))
         assertFalse(isLikelyDownloadThrottleSignal(SocketException("Connection reset")))
@@ -36,11 +36,11 @@ class DownloadResolveFailureClassificationTest {
 
     @Test fun httpRefusalsAndCancellationNeverReplayAsTransportTimeout() {
         listOf(403, 410, 429, 500).forEach { code ->
-            assertFalse(shouldRetryDownloadResolve(httpStatus(code)))
+            assertFalse(isDownloadResolveTimeout(httpStatus(code)))
         }
-        assertFalse(shouldRetryDownloadResolve(IOException("cancelled", CancellationException("user tapped stop"))))
-        assertFalse(shouldRetryDownloadResolve(IOException("no playable clients")))
-        assertFalse(shouldRetryDownloadResolve(IOException("unsupported client")))
+        assertFalse(isDownloadResolveTimeout(IOException("cancelled", CancellationException("user tapped stop"))))
+        assertFalse(isDownloadResolveTimeout(IOException("no playable clients")))
+        assertFalse(isDownloadResolveTimeout(IOException("unsupported client")))
     }
 
     @Test fun onlyExplicitRateLimitsTriggerDownloadCooldownHeuristic() {
@@ -53,6 +53,8 @@ class DownloadResolveFailureClassificationTest {
         assertFalse(isLikelyDownloadThrottleSignal(IOException("wrapped HTTP 429", httpStatus(403))))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("read at byte offset 4291024")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("videoId=track429xyz unavailable")))
+        assertFalse(isLikelyDownloadThrottleSignal(IOException("stopped at offset 429")))
+        assertFalse(isLikelyDownloadThrottleSignal(IOException("https://example.test/media?id=429")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("HTTP 403 Forbidden: sign in required")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("HTTP 410 Gone")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("temporarily unavailable")))

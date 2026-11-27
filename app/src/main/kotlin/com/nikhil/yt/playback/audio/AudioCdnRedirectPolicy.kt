@@ -81,12 +81,14 @@ internal fun Request.forCdnTarget(target: HttpUrl): Request {
     val builder = newBuilder().url(target)
     if (url.host != target.host || url.port != target.port || url.scheme != target.scheme) {
         for (name in headers.names()) {
-            if (name.lowercase(java.util.Locale.ROOT) !in FORWARD_HEADERS) builder.removeHeader(name)
+            val safeReferer = name.equals("Referer", true) && header(name) in PUBLIC_REFERERS
+            if (!safeReferer && name.lowercase(java.util.Locale.ROOT) !in FORWARD_HEADERS) builder.removeHeader(name)
         }
     }
     return builder.build()
 }
 
+private val PUBLIC_REFERERS = setOf("https://music.youtube.com/", "https://www.youtube.com/", "https://www.youtube-nocookie.com/")
 private val FORWARD_HEADERS = setOf(
     "range", "if-range", "accept", "accept-encoding", "user-agent", "origin",
 )

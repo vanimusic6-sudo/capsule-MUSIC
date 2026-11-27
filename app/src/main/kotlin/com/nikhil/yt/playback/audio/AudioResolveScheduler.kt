@@ -188,7 +188,10 @@ internal class AudioResolveScheduler(
 
     private fun preemptBackground() {
         val running = active ?: return
-        if (waiting.any { it.priority.outranks(running.priority) }) {
+        // Only an audible selection can abandon a request already in progress.
+        // Speculation takes priority at dispatch, without restarting a download.
+        if (running.priority != AudioResolvePriority.PLAYBACK &&
+            waiting.any { it.priority == AudioResolvePriority.PLAYBACK }) {
             running.preempted = true
             running.worker?.cancel(Preempted())
         }

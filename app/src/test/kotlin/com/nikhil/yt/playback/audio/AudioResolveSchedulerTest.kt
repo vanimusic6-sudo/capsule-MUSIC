@@ -45,6 +45,22 @@ class AudioResolveSchedulerTest {
         assertEquals(2, draws)
     }
 
+    @Test fun speculativePrefetchNeverRestartsAnActiveDownload() = runTest {
+        val scheduler = AudioResolveScheduler()
+        val events = mutableListOf<String>()
+        val download = launch {
+            scheduler.run("offline", AudioResolvePriority.DOWNLOAD) {
+                events += "open"
+                delay(100)
+                events += "complete"
+            }
+        }
+        runCurrent()
+        scheduler.run("next", AudioResolvePriority.PREFETCH) { events += "prefetch" }
+        download.join()
+        assertEquals(listOf("open", "complete", "prefetch"), events)
+    }
+
     @Test fun priorityOrderingIsExplicitAndIndependentOfEnumOrdinal() {
         assertEquals(0, AudioResolvePriority.PLAYBACK.schedulingRank)
         assertEquals(100, AudioResolvePriority.PREFETCH.schedulingRank)

@@ -68,9 +68,9 @@ import javax.inject.Singleton
 /**
  * A genuine timed-out /player request can briefly fail at a bad network edge.
  * Never repeat an HTTP refusal, bot-check, explicit cancellation, or client
- * entitlement failure. A single retry is allowed within the same budget.
+ * entitlement failure. Media3 owns the retry after the transfer releases its slot.
  */
-internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
+internal fun isDownloadResolveTimeout(failure: Throwable): Boolean {
     val chain = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
     if (chain.any { it is CancellationException || it is InvalidResponseCodeException }) return false
     return chain.any {
@@ -79,7 +79,7 @@ internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
     }
 }
 
-private val explicit429 = Regex("""(?<!\d)429(?!\d)""")
+private val explicit429 = Regex("""(?:^429$|\b(?:http(?:/\d(?:\.\d)?)?|status(?: code)?|response code)[:=\s]+429\b)""")
 
 internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
     val chain = generateSequence(exception as Throwable?) { it.cause }.take(8).toList()
@@ -90,7 +90,7 @@ internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
     if (responses.isNotEmpty()) return responses.any { it.responseCode == 429 }
     val text = chain.mapNotNull { it.message }.joinToString(" ").lowercase()
     return explicit429.containsMatchIn(text) ||
-        "rate limit" in text || "too many requests" in text || "quota" in text
+        "rate limit" in text || "too many requests" in text || "quota exceeded" in text
 }
 
 /** One fresh signed URL after a network or account session switch, then fail
@@ -177,6 +177,12 @@ constructor(
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
     @Volatile private var initialIndexLoaded = false
     private val removedWhileLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private fun downloadAdmissionClosed() =
+        CapsulePlaybackSafety.remainingBlockMs() > 0L ||
+            com.nikhil.yt.playback.audio.AudioAccessGate.discipline.globalRemainingMs() > 0L ||
+            CapsuleAudioEngine.downloadCooldownRemainingMs() > 0L ||
+            cooldownUntilMs > System.currentTimeMillis()
+
     private suspend fun awaitDownloadResolveWindow() {
         // Do not convert a valid 10-minute server 429 cooldown into a permanent
         // Media3 download failure after 30 seconds. The suspended download owns
@@ -195,7 +201,7 @@ constructor(
         mediaId: String,
     ): CapsuleAudioEngine.PlaybackData {
         repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
-            awaitDownloadResolveWindow()
+            if (downloadAdmissionClosed()) throw IOException("Download admission closed while queued")
             com.nikhil.yt.playback.audio.AudioAccessGate.check(mediaId)
             refreshDownloadNetworkHealth()
             val selection = playbackContext()
@@ -248,20 +254,12 @@ constructor(
                 result.exceptionOrNull()
                     ?: java.io.IOException("Download audio resolve failed without an exception")
 
-            // A global 429/bot-check breaker is a queue pause, not a reason to
-            // permanently fail the user's download. The next iteration waits at
-            // the shared gate and retries only after the breaker becomes safe.
-            if (CapsulePlaybackSafety.remainingBlockMs() > 0L || CapsuleAudioEngine.downloadCooldownRemainingMs() > 0L) {
-                registerThrottleSignal(failure)
-                return@repeat
+            if (downloadAdmissionClosed()) {
+                // Unwind the slot first. Admission on the next Media3 attempt waits outside it.
+                throw IOException("Download admission closed during resolution", failure)
             }
-
-            if (attempt + 1 < MAX_DOWNLOAD_RESOLVE_ATTEMPTS && shouldRetryDownloadResolve(failure)) {
-                timber.log.Timber.tag("AudioDownload").w(
-                    "resolve-timeout-retry id=%s attempt=%d budget=%d (no client ban)",
-                    mediaId, attempt + 1, MAX_DOWNLOAD_RESOLVE_ATTEMPTS,
-                )
-                return@repeat
+            if (isDownloadResolveTimeout(failure)) {
+                throw IOException("Audio download resolution timed out", failure)
             }
             throw failure
         }
@@ -429,6 +427,9 @@ constructor(
             downloaderFactory,
         ).apply {
             maxParallelDownloads = MAX_PARALLEL_DOWNLOADS
+            // One retry without byte progress. The standard downloader resets this count
+            // when more bytes arrive, allowing long transfers to resume after real outages.
+            minRetryCount = 1
             addListener(
                 object : DownloadManager.Listener {
                     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {

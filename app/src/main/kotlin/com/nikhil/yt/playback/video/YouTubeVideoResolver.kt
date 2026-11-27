@@ -128,7 +128,7 @@ object YouTubeVideoResolver {
 
     private val cache = VideoStreamCache<ResolvedVideo>(
         maxEntries = 64,
-        currentContext = com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer::sessionIdentity,
+        currentContext = CapsuleInnerTubeXPlayer::sessionIdentity,
     ) {
         it.expiresAtMs > System.currentTimeMillis() + CACHE_SAFETY_MS &&
             !VideoRejectedLinks.isRejected(it.videoStreamUrl) &&

@@ -20,9 +20,11 @@ internal class RangeSizePolicy(
     private var slowReadSamples = 0
     private var fastReadSamples = 0
 
+    fun measures(length: Int) = length >= minRequestedBytes
+
     /** Time only an actual upstream read(), never time Media3 spent idle. */
     fun observeRead(requestedBytes: Int, readBytes: Int, elapsedMs: Long) {
-        if (requestedBytes < minRequestedBytes || readBytes <= 0) return
+        if (!measures(requestedBytes) || readBytes <= 0) return
         val readBps = readBytes.toDouble() * 1000.0 / elapsedMs.coerceAtLeast(1L)
         when {
             elapsedMs >= slowReadMs && readBps < slowBps -> {
