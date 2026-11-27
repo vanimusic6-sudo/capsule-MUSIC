@@ -5683,7 +5683,9 @@ class MusicService :
      * Media3 owns codec output while the rendering surface is absent.
      */
     fun suspendCapsuleVideoForAppBackground() {
-        suspendCapsuleVideoForScreenOff()
+        // Backgrounding is only a visibility change. Keep the committed
+        // clip soundtrack and timeline; the screen receiver alone parks VIDEO.
+        setVideoAppForeground(false)
     }
 
     private fun enterCapsuleVideoMode() {

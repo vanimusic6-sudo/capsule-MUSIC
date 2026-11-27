@@ -389,8 +389,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        // Park the VIDEO renderer before its UI SurfaceView detaches;
-        // preserve VIDEO selection and use uninterrupted main AUDIO in background.
+        // Notify VIDEO of UI invisibility before its SurfaceView detaches;
+        // preserve the committed clip soundtrack and timeline in background.
         // Configuration changes (e.g. rotation) are not a background exit.
         if (!isChangingConfigurations) {
             playerConnection?.service?.suspendCapsuleVideoForAppBackground()
