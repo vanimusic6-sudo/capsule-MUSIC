@@ -6,11 +6,13 @@ The actual compact player rises together with the rounded leading edge of the fu
 
 ## Active timing contract
 
-- BottomSheetState owns position, intent and inherited velocity. Critically damped springs: opening stiffness 300, closing 250.
+- BottomSheetState owns position, intent and inherited velocity. Critically damped springs: opening stiffness 270, closing 225.
 - PlayerWindow, mini and navigation sample the same normalized position. The dock approach integrates a smooth speed ramp rather than multiplying position by another easing. This keeps the spatial derivative continuous (maximum approximately 1.0583).
-- Navigation tucks over progress 0.025–0.22; destination opacity rises over 0.075–0.52; compact opacity fades over 0.39–0.69. Closing reverses these phases.
-- The tiny closing-only landing accent is continuous in the actual velocity and begins only after the geometry reaches the compact anchor: mini at most +3 dp and navigation at most -2 dp. It vanishes at rest and cannot dismiss playback.
+- Navigation tucks over progress 0.008–0.27; destination opacity rises over 0.08–0.60; compact opacity fades over 0.42–0.76. All three use C2 quintic phases. The mini can lead the expanding edge by at most 7 dp with a smooth, reversible bell-shaped offset. Closing reverses these phases.
+- The tiny closing-only landing accent is continuous in the actual velocity and begins only after the geometry reaches the compact anchor: mini at most +2.5 dp and navigation at most -1.75 dp. It vanishes at rest and cannot dismiss playback.
 - Full page geometry starts at the real mini's horizontal inset and rounded contour; native photo and controls are not scaled independently.
+- Retain the compact content (including decoded thumbnail) while fullscreen is visible, without rendering it. Keep background clocks paused, stop marquee once covered, and resume live position updates before the mini is visible. This trades a small amount of retained UI state and event-driven subscriptions for avoiding cold composition on close.
+- Home draw visibility is a derived Boolean; do not invalidate its drawing every frame. Avoid creating a custom contour when the destination is invisible or fully expanded. The hidden mini is placed outside the viewport.
 - No new dependencies or external source excerpts.
 
 ## References
