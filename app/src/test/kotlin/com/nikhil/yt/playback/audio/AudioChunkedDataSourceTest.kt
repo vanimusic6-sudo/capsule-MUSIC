@@ -203,6 +203,57 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun resetOpeningContinuationRecoversImmediatelyAtSameOffset() {
+        val bytes = content(500)
+        val inner = FakeUpstream(bytes)
+        var reset = false
+        val upstream = object : DataSource by inner {
+            override fun open(dataSpec: DataSpec): Long {
+                val length = inner.open(dataSpec)
+                if (dataSpec.position == 128L && !reset) {
+                    reset = true
+                    throw AudioCdnRefreshRequiredException("abcdefghijk", AudioCdnRefreshReason.OPEN_FAILURE,
+                        java.net.SocketException("Connection reset"))
+                }
+                return length
+            }
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128, retryContinuationOpen = true)
+        try {
+            source.open(spec(500))
+            assertArrayEquals(bytes, drain(source))
+            assertEquals(listOf(0L, 128L, 128L, 256L, 384L), inner.opens.map { it.first })
+        } finally { source.close() }
+    }
+
+    @Test
+    fun continuationReconnectIsBoundedAndNeverRetriesHttpRefusalOrNetworkHandoff() {
+        for (mode in listOf("reset", "403", "429", "handoff")) {
+            val inner = FakeUpstream(content(500))
+            var network = 1L
+            val upstream = object : DataSource by inner {
+                override fun open(dataSpec: DataSpec): Long {
+                    val length = inner.open(dataSpec)
+                    if (dataSpec.position == 0L) return length
+                    if (mode == "403" || mode == "429") {
+                        throw InvalidResponseCodeException(mode.toInt(), "refused", null, emptyMap(), dataSpec, ByteArray(0))
+                    }
+                    if (mode == "handoff") network = 2L
+                    throw java.net.SocketException("Connection reset")
+                }
+            }
+            val source = AudioChunkedDataSource(upstream, chunkBytes = 128,
+                currentNetworkIdentity = { network }, retryContinuationOpen = true)
+            try {
+                source.open(spec(500))
+                org.junit.Assert.assertThrows(java.io.IOException::class.java) { drain(source) }
+                org.junit.Assert.assertThrows(java.io.IOException::class.java) { source.read(ByteArray(1), 0, 1) }
+                assertEquals(if (mode == "reset") 3 else 2, inner.opens.size)
+            } finally { source.close() }
+        }
+    }
+
+    @Test
     fun aSecondResetWithinTheSameChunkEscapesToTheNormalRecoveryBudget() {
         val bytes = ByteArray(500) { it.toByte() }
         val inner = FakeUpstream(bytes)

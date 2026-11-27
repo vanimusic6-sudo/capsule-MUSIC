@@ -51,6 +51,7 @@ internal class AudioChunkedDataSource(
     chunkBytes: Long = AUDIO_CHUNK_BYTES,
     initialChunkBytes: (DataSpec) -> Long = { 0L },
     currentNetworkIdentity: () -> Long? = { null },
+    retryContinuationOpen: Boolean = false,
 ) : ProgressiveRangeSource(
     upstream = upstream,
     planFor = { spec ->
@@ -66,12 +67,21 @@ internal class AudioChunkedDataSource(
     canResume = { failure, _ ->
         !failure.isExpectedAudioCdnInterruption() && failure.isTransientAudioCdnSocketReset()
     },
+    canRetryContinuationOpen = { failure ->
+        retryContinuationOpen && failure.isAudioCdnTransportFailure() &&
+            failure.isTransientAudioCdnSocketReset() &&
+            failure.audioAccessStopOrNull() == null &&
+            (failure.audioCdnRefreshRequiredOrNull()?.refreshReason.let {
+                it == null || it == AudioCdnRefreshReason.OPEN_FAILURE
+            })
+    },
 ) {
     internal class Factory(
         private val upstreamFactory: DataSource.Factory,
         private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
         private val initialChunkBytes: (DataSpec) -> Long = { 0L },
         private val currentNetworkIdentity: () -> Long? = { null },
+        private val retryContinuationOpen: Boolean = false,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
             AudioChunkedDataSource(
@@ -79,6 +89,7 @@ internal class AudioChunkedDataSource(
                 chunkBytes,
                 initialChunkBytes,
                 currentNetworkIdentity,
+                retryContinuationOpen,
             )
     }
 }

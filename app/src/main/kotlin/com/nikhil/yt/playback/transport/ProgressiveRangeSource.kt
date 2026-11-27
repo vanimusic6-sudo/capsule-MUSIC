@@ -23,6 +23,7 @@ internal open class ProgressiveRangeSource(
     private val readAheadFor: (DataSpec) -> Int = { 0 },
     private val networkIdentity: () -> Long? = { null },
     private val canResume: (IOException, Boolean) -> Boolean,
+    private val canRetryContinuationOpen: (IOException) -> Boolean = { false },
 ) : DataSource {
     private var request: DataSpec? = null
     // A rejected or malformed range is terminal for this open. A subsequent
@@ -36,6 +37,7 @@ internal open class ProgressiveRangeSource(
     private var total = UNSET
     private var rangeStart = 0L
     private var resumed = false
+    private var continuationOpenRetried = false
     private var validator: String? = null
     private var ahead = ByteArray(0)
     private var aheadOffset = 0
@@ -140,10 +142,29 @@ internal open class ProgressiveRangeSource(
             val selected = requireNotNull(plan)
             upstream.close()
             val next = slice(selected.rate.onChunkComplete())
-            upstream.open(next)
-            acceptRange(next, responseRange())
             resumed = false
             rangeStart = position
+            try {
+                upstream.open(next)
+            } catch (failure: IOException) {
+                // Recover a reset at an already established stream seam NOW,
+                // not after Media3 drains minutes of buffered samples.
+                // One extra open per logical source, never a second retry on
+                // this slice, a fresh URL, or a different network.
+                if (continuationOpenRetried || network != networkIdentity() ||
+                    !canRetryContinuationOpen(failure) || Thread.currentThread().isInterrupted) throw failure
+                continuationOpenRetried = true
+                resumed = true
+                try {
+                    upstream.close()
+                    if (network != networkIdentity() || Thread.currentThread().isInterrupted) throw failure
+                    upstream.open(next)
+                } catch (retry: IOException) {
+                    if (retry !== failure) retry.addSuppressed(failure)
+                    throw retry
+                }
+            }
+            acceptRange(next, responseRange())
         }
         val wanted = bounded(length)
         val count = when {
@@ -235,6 +256,7 @@ internal open class ProgressiveRangeSource(
         aheadOffset = 0
         aheadEnd = 0
         resumed = false
+        continuationOpenRetried = false
         upstream.close()
     }
 

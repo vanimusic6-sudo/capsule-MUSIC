@@ -5278,6 +5278,7 @@ class MusicService :
                 // exit IP that the signed URL was issued to. Do not perform
                 // the one-shot same-link read retry across that boundary.
                 currentNetworkIdentity = { connectivityManager.activeNetwork?.networkHandle },
+                retryContinuationOpen = true,
             )
         val audioTransport = DataSource.Factory {
             CapsuleAudioTransportDataSource(
