@@ -129,6 +129,10 @@ class PlayerTransitionArchitectureTest {
         assertFalse(mini.contains(".playerArtworkEndpoint("))
         assertTrue(player.contains("foregroundAlpha = { 1f }"))
         assertTrue(main.contains("playerNavigationTravelPx(p, distance, this.density,"))
+        assertTrue(main.contains("transformOrigin = TransformOrigin(0.5f, 1f)"))
+        assertTrue(main.contains("playerNavigationStretch(p, distance, this.density,"))
+        assertTrue(main.contains(".drawWithContent { if (navDraws) drawContent() }"))
+        assertTrue(main.contains("interactionEnabled = shouldShowNavigationBar && !playerSceneBlocksTouch"))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
