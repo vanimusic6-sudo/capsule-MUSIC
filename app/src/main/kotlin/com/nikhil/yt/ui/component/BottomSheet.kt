@@ -832,9 +832,10 @@ class BottomSheetState internal constructor(
 
     val compactSurfaceVisible by
         derivedStateOf {
-            // Do not detach Mini children halfway through a queued measure/semantics traversal.
-            // Keep them for the finite trip; their decorative clock is separately draw-gated.
-            if (playerMotion) !isDismissed && (!isExpanded || isAnimationRunning)
+            // Warm the compact controls shortly before they become visible on close.
+            // The retained composition remains mounted, but marquee/progress clocks
+            // need not run throughout the completely covered part of the trip.
+            if (playerMotion) !isDismissed && visualProgress < 0.84f
             else shouldShowCompactSurface(visualProgress, isDismissed, contentHandoffPoint)
         }
 
