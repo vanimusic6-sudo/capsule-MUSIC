@@ -51,6 +51,8 @@ internal class CapsuleVideoLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(1) {
         if (isTerminalVideoLoadFailure(info.exception)) C.TIME_UNSET else super.getRetryDelayMsFor(info)
 }
 
+private val SAFE_VIDEO_CACHE_KEY = Regex("capsule:video(?:-stream)?:(?:(?:audio|video):)?[A-Za-z0-9_-]{11}:[0-9]+")
+
 /** Observe each real HTTP range, including after seeks, before it enters the cache. */
 internal class CapsuleVideoLinkDataSource(private val upstream: DataSource) : DataSource {
     override fun open(dataSpec: DataSpec): Long {
@@ -60,7 +62,7 @@ internal class CapsuleVideoLinkDataSource(private val upstream: DataSource) : Da
         if (!com.nikhil.yt.innertube.video.VideoStreamValidation.isSupportedUrl(url))
             throw IOException("Untrusted VIDEO media address")
         val safeKey = dataSpec.key?.takeIf {
-            it.length <= 80 && it.matches(Regex("capsule:video(?:-stream)?:(?:(?:audio|video):)?[A-Za-z0-9_-]{11}:[0-9]+"))
+            it.length <= 80 && it.matches(SAFE_VIDEO_CACHE_KEY)
         } ?: "media"
         if (VideoRejectedLinks.isRejected(url)) throw VideoRetiredLinkException()
         val start = System.nanoTime()
