@@ -152,8 +152,8 @@ internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
 
 /** C2 optical/spatial handoff, with zero acceleration at both ends. */
 internal fun playerSilkPhase(progress: Float, start: Float, end: Float): Float {
-    val t = playerPhase(progress, start, end)
-    return (t * t * t * (10f + t * (-15f + 6f * t))).coerceIn(0f, 1f)
+    val t = playerPhase(progress, start, end).toDouble()
+    return (t * t * t * (10.0 + t * (-15.0 + 6.0 * t))).toFloat().coerceIn(0f, 1f)
 }
 
 // Opacity phases have soft endpoints, but geometry follows the physical progress.
