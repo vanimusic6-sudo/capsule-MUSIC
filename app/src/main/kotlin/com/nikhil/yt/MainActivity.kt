@@ -227,6 +227,7 @@ import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
 import com.nikhil.yt.ui.component.playerSceneShouldInterceptTouch
+import com.nikhil.yt.ui.component.playerNavigationTravelPx
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
@@ -1751,7 +1752,7 @@ class MainActivity : ComponentActivity() {
                                             else -> miniPlayerGlassBackdrop
                                         },
                                 )
-                                // The real navigation stays below the opaque player sheet.
+                                // Navigation tucks first and shares the Mini's closing landing.
                                 // Scaffold retains only a height spacer so page geometry is unchanged.
                                 if (!useRail) {
                                     val navSlideDistance =
@@ -1761,10 +1762,15 @@ class MainActivity : ComponentActivity() {
                                             Modifier
                                                 .align(Alignment.BottomCenter)
                                                 .height(navSlideDistance)
-                                                // Above the dock at rest, below the opaque player.
                                                 .zIndex(1f)
                                                 .graphicsLayer {
-                                                    translationY = navSlideDistance.toPx() * (1f - navigationBarReveal)
+                                                    val distance = navSlideDistance.toPx()
+                                                    val reveal = navigationBarReveal.coerceIn(0f, 1f)
+                                                    val p = if (playerBottomSheetState.isDismissed) 0f
+                                                        else playerBottomSheetState.visualProgress
+                                                    translationY = distance * (1f - reveal) + reveal *
+                                                        playerNavigationTravelPx(p, distance, density,
+                                                            playerBottomSheetState.frameVelocityFraction)
                                                 },
                                     ) {
                                         if (pureBlack) Color.Black
