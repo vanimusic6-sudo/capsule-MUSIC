@@ -25,6 +25,9 @@ internal open class ProgressiveRangeSource(
     private val canResume: (IOException, Boolean) -> Boolean,
 ) : DataSource {
     private var request: DataSpec? = null
+    // A rejected or malformed range is terminal for this open. A subsequent
+    // read must not silently repeat a failed CDN request at the same seam.
+    private var terminalFailure: IOException? = null
     private var plan: RangePlan? = null
     private var network: Long? = null
     private var position = 0L
@@ -40,6 +43,15 @@ internal open class ProgressiveRangeSource(
 
     override fun open(dataSpec: DataSpec): Long {
         check(request == null)
+        return try {
+            openResource(dataSpec)
+        } catch (failure: IOException) {
+            terminalFailure = failure
+            throw failure
+        }
+    }
+
+    private fun openResource(dataSpec: DataSpec): Long {
         request = dataSpec
         position = dataSpec.position
         rangeStart = position
@@ -73,6 +85,9 @@ internal open class ProgressiveRangeSource(
                 val expected = if (spec.length == UNSET) range.total - position else spec.length
                 if (range.start != position || range.size != expected)
                     throw IOException("Incomplete or misplaced direct media range")
+                // A valid range states the exact byte count even if the upstream
+                // has no Content-Length. Preserve early-EOF detection in that case.
+                if (remaining == UNSET) remaining = range.size
             }
         }
         if (remaining == UNSET) remaining = opened
@@ -108,6 +123,17 @@ internal open class ProgressiveRangeSource(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         require(offset >= 0 && length >= 0 && offset <= buffer.size - length)
         if (length == 0) return 0
+        terminalFailure?.let { throw IOException("Media open has failed; close before reopening", it) }
+        check(request != null)
+        return try {
+            readResource(buffer, offset, length)
+        } catch (failure: IOException) {
+            terminalFailure = failure
+            throw failure
+        }
+    }
+
+    private fun readResource(buffer: ByteArray, offset: Int, length: Int): Int {
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
         if (rangeRemaining == 0L) {
             if (network != networkIdentity()) throw java.net.SocketException("Media network changed")
@@ -202,6 +228,7 @@ internal open class ProgressiveRangeSource(
 
     override fun close() {
         request = null
+        terminalFailure = null
         plan = null
         validator = null
         total = UNSET
