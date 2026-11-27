@@ -14,12 +14,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.geometry.Rect
@@ -65,7 +67,7 @@ internal fun PlayerWindow(
         state.setCompactOpenPress(pressed && compactInteractive)
     }
     val renderPage by remember(state) { derivedStateOf {
-        !state.isDismissed && (state.isExpandedOrExpanding || state.isAnimationRunning ||
+        !state.isDismissed && (pressed || state.isExpandedOrExpanding || state.isAnimationRunning ||
             state.compactOpenPress || playerPageVisible(state.visualProgress))
     } }
     val sceneTransitioning by remember(state) { derivedStateOf {
@@ -144,6 +146,22 @@ internal fun PlayerWindow(
         }
 
         if (renderPage) {
+            // A thin cached gradient gives the rising surface depth. Unlike a
+            // full-screen blurred shadow it never samples or repaints Home.
+            val liftShadow = remember {
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black))
+            }
+            Box(
+                Modifier.fillMaxWidth().height(14.dp).zIndex(0.5f)
+                    .graphicsLayer {
+                        val p = state.visualProgress
+                        alpha = playerLiftShadowAlpha(p)
+                        val dockTop = (state.expandedBound - state.collapsedBound).toPx()
+                        translationY = dockTop * (1f - playerFrameGeometryProgress(p)) - size.height
+                    }
+                    .padding(horizontal = miniInset)
+                    .background(liftShadow),
+            )
             key("capsule-player-window") {
                 Box(
                     Modifier.fillMaxSize().zIndex(1f)
@@ -184,7 +202,9 @@ internal fun PlayerWindow(
                         LocalCapsuleBackgroundMotionEnabled provides (pageDraws && !state.isAnimationRunning),
                         LocalPlayerSceneTransition provides sceneTransitioning,
                     ) {
-                        Box(Modifier.fillMaxSize().background(backgroundColor)) {
+                        // Isolate native content in a stable render node. The outer layer owns
+                        // the animated aperture and whole-page alpha, not each child draw.
+                        Box(Modifier.fillMaxSize().graphicsLayer().background(backgroundColor)) {
                             Box(Modifier.fillMaxSize(), content = backgroundContent)
                             Box(Modifier.fillMaxSize(), content = content)
                         }
