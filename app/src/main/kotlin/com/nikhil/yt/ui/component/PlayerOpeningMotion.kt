@@ -31,8 +31,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 270f
-internal const val PLAYER_CLOSE_STIFFNESS = 225f
+internal const val PLAYER_OPEN_STIFFNESS = 170f
+internal const val PLAYER_CLOSE_STIFFNESS = 200f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -103,11 +103,11 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.76f
+internal const val PLAYER_MINI_FADE_END = 0.82f
 // Begin contact while the page is still optically hidden, then apply pressure
 // over a wider interval. The main frame, alpha and spring are unchanged.
-internal const val PLAYER_NAV_CONTACT = 0.020f
-internal const val PLAYER_NAV_HIDDEN = 0.32f
+internal const val PLAYER_NAV_CONTACT = 0.012f
+internal const val PLAYER_NAV_HIDDEN = 0.38f
 internal fun playerNavigationTuck(progress: Float): Float =
     playerSilkPhase(progress, PLAYER_NAV_CONTACT, PLAYER_NAV_HIDDEN)
 
@@ -121,14 +121,14 @@ internal fun playerLowerEdgeTravelPx(progress: Float, available: Float, navigati
         nav * playerNavigationTuck(progress)
 }
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSilkPhase(progress, 0.42f, PLAYER_MINI_FADE_END)
+    1f - playerSilkPhase(progress, 0.46f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float =
-    playerSilkPhase(progress, 0.08f, 0.60f)
+    playerSilkPhase(progress, 0.10f, 0.66f)
 
 /**
  * A small landing accent driven by actual closing velocity. It is zero at
  * both ends, continuous through a reversal, and never changes the sheet anchor.
- * Mini goes DOWN by at most 2.5 dp; the returning nav rises by at most 1.75 dp.
+ * Mini goes DOWN by at most 1.75 dp; navigation stretches upward by at most 1.25 dp with its bottom fixed.
  */
 internal fun playerDockLanding(progress: Float, velocityFraction: Float): Float {
     if (!velocityFraction.isFinite() || velocityFraction >= 0f) return 0f
@@ -153,14 +153,22 @@ internal fun playerMiniTravelPx(progress: Float, dockTop: Float, density: Float,
     val t = playerPhase(progress, 0.025f, PLAYER_MINI_FADE_END)
     val bell = 4f * t * (1f - t)
     return -dockTop.coerceAtLeast(0f) * geometry -
-        minOf(7f * density, dockTop.coerceAtLeast(0f) * 0.025f) * bell * bell * bell +
-        2.5f * density * playerDockLanding(progress, velocityFraction)
+        minOf(5f * density, dockTop.coerceAtLeast(0f) * 0.025f) * bell * bell * bell +
+        1.75f * density * playerDockLanding(progress, velocityFraction)
 }
 
 internal fun playerNavigationTravelPx(progress: Float, distance: Float, density: Float, velocityFraction: Float): Float {
     if (!distance.isFinite() || !density.isFinite() || density <= 0f) return 0f
-    return distance.coerceAtLeast(0f) * playerNavigationTuck(progress) -
-        1.75f * density * playerDockLanding(progress, velocityFraction)
+    // Never translate above the viewport bottom. The elastic return is a
+    // separate bottom-pivot deformation, not a negative vertical offset.
+    return distance.coerceAtLeast(0f) * playerNavigationTuck(progress)
+}
+
+/** The bottom edge remains fixed to the screen even during the elastic return. */
+internal fun playerNavigationStretch(progress: Float, distance: Float, density: Float, velocityFraction: Float): Float {
+    if (!distance.isFinite() || distance <= 0f || !density.isFinite() || density <= 0f) return 1f
+    val extension = minOf(1.25f * density, distance * 0.035f)
+    return 1f + extension / distance * playerDockLanding(progress, velocityFraction)
 }
 
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
