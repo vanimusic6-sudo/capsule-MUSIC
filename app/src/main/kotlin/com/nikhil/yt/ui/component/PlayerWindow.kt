@@ -117,9 +117,12 @@ internal fun PlayerWindow(
                     .graphicsLayer {
                         val p = state.visualProgress
                         val dockTop = (state.expandedBound - state.collapsedBound).toPx()
-                        translationY = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f) +
-                            playerMiniTravelPx(p, dockTop, density, state.frameVelocityFraction)
                         alpha = playerMiniDrawAlpha(p)
+                        // A retained, invisible mini cannot sit over the full player's
+                        // hit targets. Move it outside the viewport only once alpha is zero.
+                        translationY = if (alpha <= 0f) state.collapsedBound.toPx() + miniHeight.toPx()
+                            else (state.collapsedBound - state.value).toPx().coerceAtLeast(0f) +
+                                playerMiniTravelPx(p, dockTop, density, state.frameVelocityFraction)
                     }
                     .semantics { if (!compactInteractive) hideFromAccessibility() }
                     .then(if (compactSwipeDismissEnabled && onDismiss != null && compactInteractive)
