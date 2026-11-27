@@ -26,11 +26,14 @@ class ProgressiveRangeSourceTest {
         val starts = mutableListOf<Long>()
         private lateinit var spec: DataSpec
         private var delivered = 0
+        var openFailure: IOException? = null
+        var unknownOpenedLength = false
         override fun open(dataSpec: DataSpec): Long {
             spec = dataSpec
             starts += spec.position
             delivered = 0
-            return spec.length
+            openFailure?.let { throw it }
+            return if (unknownOpenedLength) C.LENGTH_UNSET.toLong() else spec.length
         }
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             if (delivered >= spec.length) return C.RESULT_END_OF_INPUT
@@ -65,6 +68,34 @@ class ProgressiveRangeSourceTest {
         } finally { source.close() }
     }
 
+    @Test fun failedOpenNeverReadsAndClosePermitsFreshOpen() {
+        val server = Server { spec ->
+            mapOf("Content-Range" to listOf("bytes ${spec.position}-${spec.position + spec.length - 1}/12"))
+        }
+        val source = reader(server)
+        try {
+            server.openFailure = IOException("failed range")
+            assertThrows(IOException::class.java) { source.open(request) }
+            assertThrows(IOException::class.java) { source.read(ByteArray(1), 0, 1) }
+            assertEquals(listOf(0L), server.starts)
+            source.close()
+            server.openFailure = null
+            assertEquals(12L, source.open(request))
+            assertEquals(1, source.read(ByteArray(1), 0, 1))
+            assertEquals(listOf(0L, 0L), server.starts)
+        } finally { source.close() }
+    }
+
+    @Test fun directUnknownLengthUsesConfirmedContentRange() {
+        val server = Server { mapOf("Content-Range" to listOf("bytes 0-11/12")) }
+        server.unknownOpenedLength = true
+        val source = ProgressiveRangeSource(server, planFor = { null }, canResume = { _, _ -> false })
+        try {
+            val unknown = request.buildUpon().setLength(C.LENGTH_UNSET.toLong()).build()
+            assertEquals(12L, source.open(unknown))
+        } finally { source.close() }
+    }
+
     @Test fun changedSizeOffsetValidatorOrMalformedRangeStopsBeforeSecondSlice() {
         val first = mapOf("Content-Range" to listOf("bytes 0-7/12"), "ETag" to listOf("\"v1\""))
         val next = mapOf("Content-Range" to listOf("bytes 8-11/12"), "ETag" to listOf("\"v1\""))
@@ -80,6 +111,8 @@ class ProgressiveRangeSourceTest {
             try {
                 source.open(request)
                 assertEquals(8, source.read(ByteArray(8), 0, 8))
+                assertThrows(IOException::class.java) { source.read(ByteArray(4), 0, 4) }
+                // A caller which reads again before closing must not issue another GET.
                 assertThrows(IOException::class.java) { source.read(ByteArray(4), 0, 4) }
                 assertEquals(listOf(0L, 8L), server.starts)
             } finally { source.close() }
