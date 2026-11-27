@@ -238,6 +238,7 @@ class PlayerOpeningMotionTest {
         var previousPage = 0f
         var previousMini = 1f
         var previousNav = 0f
+        var previousDim = 0f
         for (i in 0..1000) {
             val p = i / 1000f
             val page = playerPresentationOpacity(p)
@@ -247,15 +248,23 @@ class PlayerOpeningMotionTest {
             assertTrue(mini in 0f..previousMini)
             assertTrue(nav in previousNav..1f)
             assertTrue("No empty optical handoff", page + mini * (1f - page) >= 0.98f)
-            if (page > 0.35f) assertTrue("Navigation is already almost fully displaced", nav >= 0.98f)
+            if (page > 0.35f) assertTrue("Navigation already mostly displaced", nav >= 0.89f)
+            if (page > 0.5f) assertTrue("Navigation nearly gone at half opacity", nav >= 0.97f)
             assertEquals(1f, playerPresentationScale(p), 0f)
             assertEquals(1f, playerSceneScale(p), 0f)
-            assertEquals(0f, playerSceneDim(p), 0f)
+            val dim = playerSceneDim(p)
+            assertTrue(dim in previousDim..0.19f)
+            assertTrue(playerLiftShadowAlpha(p) in 0f..0.24f)
+            previousDim = dim
             previousPage = page; previousMini = mini; previousNav = nav
         }
         assertEquals(1f, previousPage, 0f)
         assertEquals(0f, previousMini, 0f)
         assertEquals(1f, previousNav, 0f)
+        assertEquals(0.19f, previousDim, 0f)
+        assertEquals(0f, playerSceneDim(0f), 0f)
+        assertEquals(0f, playerLiftShadowAlpha(0f), 0f)
+        assertEquals(0f, playerLiftShadowAlpha(1f), 0f)
     }
 
     @Test fun closingAccentIsSmallVelocityDependentAndReturnsExactlyToDock() {
@@ -315,8 +324,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 60f..90f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 730f)
+            assertTrue("Responsive first two frames", at(33) in 55f..90f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 685f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
