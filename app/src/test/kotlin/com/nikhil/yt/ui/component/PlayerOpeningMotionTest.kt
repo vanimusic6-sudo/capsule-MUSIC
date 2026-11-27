@@ -234,16 +234,46 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
-    @Test fun sheetIsOpaqueAndHomeAndDockNeverTransform() {
+    @Test fun overlappingOpticalPhasesKeepTheHomeStationary() {
+        var previousPage = 0f
+        var previousMini = 1f
+        var previousNav = 0f
         for (i in 0..1000) {
             val p = i / 1000f
-            assertEquals(if (p > PlayerSceneTouchThreshold) 1f else 0f,
-                playerPresentationOpacity(p), 0f)
-            assertEquals(0f, playerNavigationTuck(p), 0f)
+            val page = playerPresentationOpacity(p)
+            val mini = playerMiniDrawAlpha(p)
+            val nav = playerNavigationTuck(p)
+            assertTrue(page in previousPage..1f)
+            assertTrue(mini in 0f..previousMini)
+            assertTrue(nav in previousNav..1f)
+            assertTrue("No empty optical handoff", page + mini * (1f - page) >= 0.98f)
+            if (page > 0.35f) assertEquals(1f, nav, 0f)
             assertEquals(1f, playerPresentationScale(p), 0f)
             assertEquals(1f, playerSceneScale(p), 0f)
             assertEquals(0f, playerSceneDim(p), 0f)
-            assertEquals(p < 1f, playerMiniDrawAlpha(p) > 0f)
+            previousPage = page; previousMini = mini; previousNav = nav
+        }
+        assertEquals(1f, previousPage, 0f)
+        assertEquals(0f, previousMini, 0f)
+        assertEquals(1f, previousNav, 0f)
+    }
+
+    @Test fun closingAccentIsSmallVelocityDependentAndReturnsExactlyToDock() {
+        for (density in listOf(1f, 2f, 3.5f)) {
+            assertEquals(0f, playerMiniTravelPx(0f, 590f * density, density, -1f), 0f)
+            assertEquals(0f, playerNavigationTravelPx(0f, 60f * density, density, -1f), 0f)
+            assertEquals(3.5f * density, playerMiniTravelPx(0.029f, 590f * density, density, -0.3f), 0.001f)
+            assertEquals(-2.5f * density, playerNavigationTravelPx(0.029f, 60f * density, density, -0.3f), 0.001f)
+            assertEquals(0f, playerDockLanding(0.029f, 0.3f), 0f)
+            assertEquals(0f, playerDockLanding(0.029f, Float.NaN), 0f)
+            for (i in 0..1000) {
+                val p = i / 1000f
+                val landing = playerDockLanding(p, -0.3f)
+                assertTrue(landing in 0f..1f)
+                if (p >= 0.055f || p <= 0.003f) assertEquals(0f, landing, 0.0001f)
+                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 3.5f * density + 0.001f)
+                assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -2.5f * density - 0.001f)
+            }
         }
     }
 
@@ -276,8 +306,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 135f..180f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 910f)
+            assertTrue("Responsive first two frames", at(33) in 120f..180f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 875f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -312,7 +342,7 @@ class PlayerOpeningMotionTest {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
         assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 9f..11f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 16f..18f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -322,13 +352,13 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun closingTailDoesNotDrawOrOwnInput() {
-        for (i in 0..2) {
+        for (i in 0..35) {
             val p = i / 1000f
             assertEquals(0f, playerPresentationOpacity(p), 0f)
             assertFalse(playerPageVisible(p))
             assertFalse(playerSceneShouldInterceptTouch(p, expanding = false, dismissed = false))
         }
-        assertTrue(playerSceneShouldInterceptTouch(0.003f, expanding = false, dismissed = false))
+        assertTrue(playerSceneShouldInterceptTouch(0.036f, expanding = false, dismissed = false))
         assertTrue(playerSceneShouldInterceptTouch(0f, expanding = true, dismissed = false))
     }
 
@@ -351,28 +381,28 @@ class PlayerOpeningMotionTest {
             CAPSULE_COVER_HANDOFF_MS in 160..260)
     }
 
-    @Test fun sheetTranslationIsMonotonicOnDifferentViewports() {
+    @Test fun contourGrowsFromTheActualMiniBoundsOnDifferentViewports() {
         for (height in listOf(360f, 700f, 1440f, 2560f)) {
-            assertEquals(height, playerSheetOffsetPx(0f, height), 0f)
-            assertEquals(height, playerSheetOffsetPx(Float.NaN, height), 0f)
-            assertEquals(0f, playerSheetOffsetPx(1f, height), 0f)
-            var previous = height
-            var previousCorner = 24f
+            val width = 360f
+            val top = height - 110f
+            val compact = playerPresentationBounds(0f, width, height, top, 48f, 12f)
+            assertEquals(12f, compact.left, 0f)
+            assertEquals(top, compact.top, 0f)
+            assertEquals(width - 12f, compact.right, 0f)
+            assertEquals(top + 48f, compact.bottom, 0f)
+            var previous = compact
             for (i in 0..1000) {
                 val p = i / 1000f
-                val offset = playerSheetOffsetPx(p, height)
-                val corner = playerSheetCornerDp(p)
-                assertTrue(offset in 0f..height && offset <= previous)
-                assertTrue(corner in 0f..24f && corner <= previousCorner)
-                if (p <= PlayerSceneTouchThreshold) assertEquals(height, offset, 0f)
-                previous = offset
-                previousCorner = corner
+                val frame = playerPresentationBounds(p, width, height, top, 48f, 12f)
+                assertTrue(frame.top <= previous.top + 0.001f)
+                assertTrue(frame.left <= previous.left + 0.001f)
+                assertTrue(frame.right >= previous.right - 0.001f)
+                assertTrue(frame.bottom >= previous.bottom - 0.001f)
+                assertEquals(frame.top - top, playerMiniTravelPx(p, top, 1f, 0f), 0.001f)
+                previous = frame
             }
-            assertEquals(0f, previous, 0f)
-            assertEquals(0f, previousCorner, 0f)
+            assertEquals(androidx.compose.ui.geometry.Rect(0f, 0f, width, height), previous)
         }
-        assertEquals(0f, playerSheetOffsetPx(0.5f, Float.NaN), 0f)
-        assertEquals(0f, playerSheetOffsetPx(0.5f, -10f), 0f)
     }
 
 
@@ -388,7 +418,7 @@ class PlayerOpeningMotionTest {
             assertEquals("photographs cannot be stretched to fill the growing frame", actualScale, heightScale, 0.001f)
             assertEquals(playerPresentationScale(p), actualScale, 0.002f)
             val expectedY = with(compose.density) {
-                playerSheetOffsetPx(p, 700.dp.toPx())
+                590.dp.toPx() * (1f - playerFrameGeometryProgress(p))
             }
             assertEquals("all content follows the same vertical position", expectedY, a.y, 2f)
             val poster = rawBounds("poster")
@@ -455,26 +485,18 @@ class PlayerOpeningMotionTest {
         bitmap.recycle()
     }
 
-    @Test fun realMiniRemainsAtDockDuringOpeningAndClosing() {
+    @Test fun realMiniRisesWithDestinationAndReturnsToItsDock() {
         mount()
         val source = rawBounds("mini-art")
-        sampleAt(0.40f)
-        assertEquals(source, rawBounds("mini-art"))
+        sampleAt(0.27f)
+        val raised = rawBounds("mini-art")
+        assertTrue(raised.top < source.top)
+        assertEquals(source.width, raised.width, 2f)
         advance(700)
         compose.runOnIdle { state.collapseSoft() }
-        advance(128)
-        assertEquals(source, rawBounds("mini-art"))
         advance(700)
         assertEquals(source, rawBounds("mini-art"))
     }
-
-
-
-
-
-
-
-
 
 
     @Test fun lateArtworkChangesDoNotRestartTheWindowOrReplaceItsPage() {
@@ -515,7 +537,7 @@ class PlayerOpeningMotionTest {
             val p = compose.runOnIdle { state.visualProgress }
             if (!sampled && p in 0.15f..0.5f) {
                 val a = pagePoint(0f, 0f)
-                val expectedY = with(compose.density) { playerSheetOffsetPx(p, 700.dp.toPx()) }
+                val expectedY = with(compose.density) { 590.dp.toPx() * (1f - playerFrameGeometryProgress(p)) }
                 assertEquals(expectedY, a.y, 2f)
                 capture("surface-closing").recycle(); sampled = true
             }
@@ -594,7 +616,7 @@ class PlayerOpeningMotionTest {
         advance(96)
         compose.runOnIdle {
             val p = state.visualProgress
-            assertTrue("page follows one bounded vertical trajectory", playerSheetOffsetPx(p, 700f) in 0f..700f)
+            assertTrue("page follows one bounded vertical trajectory", playerFrameGeometryProgress(p) in 0f..1f)
             assertTrue("real artwork must not collapse into a narrow offset strip",
                 playerPresentationScale(p) >= 0.95f)
         }
@@ -608,7 +630,7 @@ class PlayerOpeningMotionTest {
         advance(144)
         compose.runOnIdle {
             val p = state.visualProgress
-            assertTrue("whole page retires without shrinking into a colored plate", playerSheetOffsetPx(p, 700f) in 0f..700f)
+            assertTrue("whole page retires without shrinking into a colored plate", playerFrameGeometryProgress(p) in 0f..1f)
             assertTrue("real Mini remains beneath the page", playerMiniDrawAlpha(p) > 0f)
         }
         advance(600)
