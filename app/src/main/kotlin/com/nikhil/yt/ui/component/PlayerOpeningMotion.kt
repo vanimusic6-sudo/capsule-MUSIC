@@ -104,10 +104,10 @@ internal fun playerSceneShouldInterceptTouch(
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
 internal const val PLAYER_MINI_FADE_END = 0.76f
-// First the lower edge reaches navigation; then both share the same displacement.
-// The contact phase finishes while the full player is still mostly transparent.
-internal const val PLAYER_NAV_CONTACT = 0.065f
-internal const val PLAYER_NAV_HIDDEN = 0.29f
+// Begin contact while the page is still optically hidden, then apply pressure
+// over a wider interval. The main frame, alpha and spring are unchanged.
+internal const val PLAYER_NAV_CONTACT = 0.020f
+internal const val PLAYER_NAV_HIDDEN = 0.32f
 internal fun playerNavigationTuck(progress: Float): Float =
     playerSilkPhase(progress, PLAYER_NAV_CONTACT, PLAYER_NAV_HIDDEN)
 
@@ -117,7 +117,7 @@ internal fun playerLowerEdgeTravelPx(progress: Float, available: Float, navigati
     val nav = if (navigationHeight.isFinite()) navigationHeight.coerceIn(0f, available) else 0f
     if (nav <= 0f) return available * playerFrameGeometryProgress(progress)
     val gap = available - nav
-    return gap * playerSilkPhase(progress, 0.008f, PLAYER_NAV_CONTACT) +
+    return gap * playerSilkPhase(progress, 0f, PLAYER_NAV_CONTACT) +
         nav * playerNavigationTuck(progress)
 }
 internal fun playerMiniDrawAlpha(progress: Float): Float =
@@ -132,10 +132,16 @@ internal fun playerPresentationOpacity(progress: Float): Float =
  */
 internal fun playerDockLanding(progress: Float, velocityFraction: Float): Float {
     if (!velocityFraction.isFinite() || velocityFraction >= 0f) return 0f
-    val t = playerPhase(progress, 0.002f, 0.025f)
-    val lobe = 4f * t * (1f - t)
+    // Start building the elastic displacement during the existing braking
+    // phase, not after the main movement has already stopped at the dock.
+    // An asymmetric C2 envelope peaks near contact, then relaxes gradually.
+    val t = playerPhase(progress, 0.001f, 0.085f)
+    val rise = t / 0.30f
+    val fall = (1f - t) / 0.70f
+    val fall2 = fall * fall
+    val envelope = (rise * rise * rise * fall2 * fall2 * fall2 * fall).coerceIn(0f, 1f)
     val closingWeight = playerSilkPhase(-velocityFraction, 0f, 0.10f)
-    return lobe * lobe * lobe * closingWeight
+    return envelope * closingWeight
 }
 
 internal fun playerMiniTravelPx(progress: Float, dockTop: Float, density: Float, velocityFraction: Float): Float {
