@@ -1,4 +1,4 @@
-/* Capsule MUSIC — opaque anchored player sheet. GPL-3.0. */
+/* Capsule MUSIC — coordinated mini-to-player transition. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -34,12 +34,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
-/**
- * A single opaque native player surface rises from the bottom of the viewport.
- * The real dock and navigation stay in place behind it. No alpha, scaling,
- * intermediate palette, independent artwork geometry or second motion clock.
- * The full page is measured once; only its layer's vertical position changes.
- */
+/** One live mini and one rounded destination, driven by the same physical anchor. */
 @Composable
 internal fun PlayerWindow(
     state: BottomSheetState,
@@ -97,9 +92,11 @@ internal fun PlayerWindow(
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     val p = state.visualProgress
                     val dockTop = (state.expandedBound - state.collapsedBound).toPx()
+                    val miniTop = dockTop + playerMiniTravelPx(p, dockTop, density, state.frameVelocityFraction) +
+                        (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
                     val compactHit = state.compactForegroundAcceptsInput &&
                         down.position.x in leftInset..(size.width - rightInset) &&
-                        down.position.y in dockTop..(dockTop + miniHeight.toPx())
+                        down.position.y in miniTop..(miniTop + miniHeight.toPx())
                     if (!compactHit && (!state.isExpandedOrExpanding || !playerPageAcceptsInput(p))) {
                         down.consume()
                         do {
@@ -110,15 +107,18 @@ internal fun PlayerWindow(
                 }
             } else Modifier),
     ) {
-        // The original dock stays underneath the incoming scene, at its real
-        // position and size. Glass therefore never moves a sampled backdrop.
+        // The actual compact card moves, not a captured replica.
         if (onDismiss == null || !state.isDismissed) {
             Box(
-                Modifier.zIndex(0f)
+                Modifier.zIndex(if (sourceDraws) 2f else 0f)
                     .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
                     .fillMaxWidth().height(miniHeight)
                     .graphicsLayer {
-                        translationY = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f)
+                        val p = state.visualProgress
+                        val dockTop = (state.expandedBound - state.collapsedBound).toPx()
+                        translationY = (state.collapsedBound - state.value).toPx().coerceAtLeast(0f) +
+                            playerMiniTravelPx(p, dockTop, density, state.frameVelocityFraction)
+                        alpha = playerMiniDrawAlpha(p)
                     }
                     .semantics { if (!compactInteractive) hideFromAccessibility() }
                     .then(if (compactSwipeDismissEnabled && onDismiss != null && compactInteractive)
@@ -147,16 +147,20 @@ internal fun PlayerWindow(
                         // hit targets. Disable its pointer tree at compact rest.
                         .graphicsLayer {
                             val p = state.visualProgress
-                            translationY = playerSheetOffsetPx(p, size.height)
-                            // The edge has a modest native radius, released only
-                            // near the fullscreen anchor. Content never stretches.
-                            val corner = playerSheetCornerDp(p).dp
-                            shape = RoundedCornerShape(topStart = corner, topEnd = corner)
+                            val frame = playerPresentationBounds(p, size.width, size.height,
+                                (state.expandedBound - state.collapsedBound).toPx(),
+                                miniHeight.toPx(), leftInset, rightInset)
+                            val opacity = playerPresentationOpacity(p)
+                            alpha = opacity
+                            translationY = if (opacity > 0f) frame.top else size.height
+                            val radius = playerPageContour(p, miniRadius.toPx(), density).radius
+                                .coerceAtMost(minOf(frame.width, frame.height) * 0.5f)
+                            shape = PlayerWindowShape(Rect(frame.left, 0f, frame.right, frame.height), radius, 0f)
                             clip = p < 1f
                         }
                         .drawWithContent { if (pageDraws) drawContent() },
                 ) {
-                    // One opaque surface. All designs retain their native composition.
+                    // One complete destination surface; all designs keep their native layout.
                     CompositionLocalProvider(
                         LocalCapsuleBackgroundMotionEnabled provides (pageDraws && !state.isAnimationRunning),
                         LocalPlayerSceneTransition provides sceneTransitioning,
