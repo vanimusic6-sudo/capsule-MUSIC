@@ -29,8 +29,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 340f
-internal const val PLAYER_CLOSE_STIFFNESS = 380f
+internal const val PLAYER_OPEN_STIFFNESS = 300f
+internal const val PLAYER_CLOSE_STIFFNESS = 250f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -90,7 +90,7 @@ internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(
  * again. Release BOTH full-screen pointer owners at the same moment, rather than waiting
  * for the last sub-pixel of the closing spring (which made the first Home scroll stall).
  */
-internal const val PlayerSceneTouchThreshold = 0.035f
+internal const val PlayerSceneTouchThreshold = 0.025f
 
 /** The same release boundary is used by the Home blocker and destination player window. */
 internal fun playerSceneShouldInterceptTouch(
@@ -101,37 +101,37 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.52f
+internal const val PLAYER_MINI_FADE_END = 0.69f
 // Navigation clears the dock while the destination is still nearly transparent.
-internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0.045f, 0.20f)
+internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0.025f, 0.27f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSoftPhase(progress, 0.27f, PLAYER_MINI_FADE_END)
+    1f - playerSoftPhase(progress, 0.39f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float =
-    playerSoftPhase(progress, 0.085f, 0.40f)
+    playerSoftPhase(progress, 0.14f, 0.52f)
 
 /**
  * A small landing accent driven by actual closing velocity. It is zero at
  * both ends, continuous through a reversal, and never changes the sheet anchor.
- * Mini goes DOWN by at most 3.5 dp; the returning nav rises by at most 2.5 dp.
+ * Mini goes DOWN by at most 3 dp; the returning nav rises by at most 2 dp.
  */
 internal fun playerDockLanding(progress: Float, velocityFraction: Float): Float {
     if (!velocityFraction.isFinite() || velocityFraction >= 0f) return 0f
-    val t = playerPhase(progress, 0.003f, 0.055f)
+    val t = playerPhase(progress, 0.002f, 0.025f)
     val lobe = 4f * t * (1f - t)
-    val closingWeight = ((-velocityFraction) / 0.14f).coerceIn(0f, 1f)
+    val closingWeight = playerSoftPhase(-velocityFraction, 0f, 0.10f)
     return lobe * lobe * closingWeight
 }
 
 internal fun playerMiniTravelPx(progress: Float, dockTop: Float, density: Float, velocityFraction: Float): Float {
     if (!dockTop.isFinite() || !density.isFinite() || density <= 0f) return 0f
     return -dockTop.coerceAtLeast(0f) * playerFrameGeometryProgress(progress) +
-        3.5f * density * playerDockLanding(progress, velocityFraction)
+        3f * density * playerDockLanding(progress, velocityFraction)
 }
 
 internal fun playerNavigationTravelPx(progress: Float, distance: Float, density: Float, velocityFraction: Float): Float {
     if (!distance.isFinite() || !density.isFinite() || density <= 0f) return 0f
     return distance.coerceAtLeast(0f) * playerNavigationTuck(progress) -
-        2.5f * density * playerDockLanding(progress, velocityFraction)
+        2f * density * playerDockLanding(progress, velocityFraction)
 }
 
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
@@ -194,9 +194,18 @@ internal fun playerPresentationContentY(
  */
 internal fun playerFrameGeometryProgress(progress: Float): Float {
     val p = boundedProgress(progress)
-    // The compact landing finishes before the final physical accent.
-    // Past the short dock interval the geometry follows the spring directly.
-    return p * playerSoftPhase(p, 0.035f, 0.14f)
+    // Integrate a smooth speed ramp at the dock instead of multiplying
+    // position by another easing. The latter creates a second acceleration
+    // just when the closing spring is supposed to be braking.
+    // This mapping is C2 at both joins, with a bounded spatial derivative.
+    val start = 0.025f
+    val end = 0.085f
+    val span = end - start
+    val normalization = 1f - (start + end) * 0.5f
+    if (p <= start) return 0f
+    if (p >= end) return ((p - (start + end) * 0.5f) / normalization).coerceIn(0f, 1f)
+    val t = (p - start) / span
+    return span * t * t * t * (1f - 0.5f * t) / normalization
 }
 
 internal fun playerPresentationBounds(
@@ -278,7 +287,7 @@ internal data class PlayerFrameContour(
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
     val radius = (miniRadius + (maxOf(miniRadius, 24f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.35f)) *
-        (1f - playerSoftPhase(p, 0.76f, 1f))
+        (1f - playerSoftPhase(p, 0.68f, 1f))
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
