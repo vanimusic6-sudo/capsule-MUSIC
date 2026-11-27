@@ -55,7 +55,9 @@ internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy()
         // The resolver already exhausted its bounded client plan. Repeating it
         // in Loader would multiply requests for an unavailable/restricted track.
         if (generateSequence(loadErrorInfo.exception as Throwable?) { it.cause }
-                .take(12).any { it is com.nikhil.yt.playback.audio.AudioResolveLoadException }) {
+                .take(12).any { it is com.nikhil.yt.playback.audio.AudioResolveLoadException ||
+                    it is com.nikhil.yt.playback.audio.AudioAccessStopException ||
+                    it is com.nikhil.yt.playback.audio.AudioEntitlementException }) {
             return C.TIME_UNSET
         }
         // Obsolete period loads cannot become valid by retrying the same source.
@@ -84,6 +86,7 @@ internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy()
                 .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
                 .firstOrNull()
 
+        if (httpFailure?.responseCode in setOf(401, 403, 410, 429)) return C.TIME_UNSET
         val resolvedKey =
             audioCdnRetryCacheKey(
                 outerCacheKey = loadErrorInfo.loadEventInfo.dataSpec.key,

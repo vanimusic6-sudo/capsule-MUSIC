@@ -120,14 +120,14 @@ class AudioCdnRedirectPolicyTest {
         health.recordUnresponsiveOpen(OTHER_GROUP.substringAfter("https://").substringBefore('/'))
         val chain = ScriptedChain(
             requestFor(ORIGIN),
-            listOf(redirectTo(OTHER_GROUP), redirectTo(OTHER_GROUP), served()),
+            listOf(redirectTo(OTHER_GROUP), served()),
         )
 
         AudioCdnRedirectInterceptor(health = health).intercept(chain).close()
 
-        assertEquals(listOf(ORIGIN, ORIGIN, OTHER_GROUP), chain.asked)
+        assertEquals(listOf(ORIGIN, OTHER_GROUP), chain.asked)
         assertEquals(
-            listOf(null to null, null to null,
+            listOf(null to null,
                 5_000 to 5_000),
             chain.timeoutsByHop,
         )
@@ -277,7 +277,7 @@ class AudioCdnRedirectPolicyTest {
 
         assertEquals(206, response.code)
         assertEquals(
-            "only a known unresponsive target warrants one reissue",
+            "server-selected target is followed without an extra origin request",
             List(AUDIO_CDN_MAX_REISSUES + 1) { ORIGIN } + OTHER_GROUP,
             chain.asked,
         )
@@ -288,7 +288,7 @@ class AudioCdnRedirectPolicyTest {
         // Each re-issue is another request, and a redirect ends its socket, so every one of them
         // is another first-request-on-a-new-socket — which is where every refusal in every
         // capture has landed. Measuring 300 opens put the second re-issue at a coin toss.
-        assertTrue("re-issues must not be free-running", AUDIO_CDN_MAX_REISSUES in 1..1)
+        assertTrue("re-issues must not be free-running", AUDIO_CDN_MAX_REISSUES == 0)
     }
 
     @Test
@@ -405,20 +405,20 @@ class AudioCdnRedirectShortcutTest {
     }
 
     @Test
-    fun `a refused shortcut is dropped and the original asked instead`() {
+    fun `a refused shortcut is dropped and the refusal is terminal`() {
         val targets = AudioCdnRedirectTargets()
         val interceptor = AudioCdnRedirectInterceptor(targets)
 
         val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
         interceptor.intercept(first).close()
 
-        // The remembered link has gone stale. The slice must still be served.
-        val second = ScriptedChain(requestFor(ORIGIN), listOf(refused(), served()))
+        // No second request may follow a server refusal.
+        val second = ScriptedChain(requestFor(ORIGIN), listOf(refused()))
         val response = interceptor.intercept(second)
         response.close()
 
-        assertEquals(206, response.code)
-        assertEquals(listOf(SAME_GROUP, ORIGIN), second.asked)
+        assertEquals(403, response.code)
+        assertEquals(listOf(SAME_GROUP), second.asked)
     }
 
     @Test

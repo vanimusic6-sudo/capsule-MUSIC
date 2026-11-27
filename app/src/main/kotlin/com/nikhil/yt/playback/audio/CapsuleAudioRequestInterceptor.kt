@@ -27,7 +27,17 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
             // OkHttp interceptors must throw IOException, not an uncaught runtime exception.
             throw IOException(it.message, it)
         }
+        AudioAccessGate.check()
         val response = chain.proceed(request)
+        if (response.code == 403) {
+            AudioAccessGate.discipline.recordWireRefusal()
+            // Preserve the HTTP response for Media3; metadata callers receive a
+            // typed terminal decision before a library can obscure the reason.
+            if (host != "googlevideo.com" && !host.endsWith(".googlevideo.com")) {
+                response.close()
+                throw AudioAccessStopException(AudioAccessStopReason.ACCESS_DENIED)
+            }
+        }
         val signal =
             if (response.code == 429) YouTubeFailureKind.RATE_LIMITED
             else if (request.url.encodedPath.endsWith("/player")) {

@@ -20,12 +20,12 @@ private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
  * two — and small enough that a server bouncing us in circles fails in a second rather than
  * holding a slice of audio hostage.
  */
-internal const val AUDIO_CDN_MAX_EXTRA_REQUESTS = 8
+internal const val AUDIO_CDN_MAX_EXTRA_REQUESTS = 4
 
 /** One reissue is reserved for a destination already observed timing out on this network.
  * Healthy server-directed redirects are followed immediately; declining every first 302
  * added 0.8–1.0s and a new socket in the 2026-11-02 device capture. */
-internal const val AUDIO_CDN_MAX_REISSUES = 1
+internal const val AUDIO_CDN_MAX_REISSUES = 0
 
 internal const val AUDIO_CDN_INITIAL_HEADERS_TIMEOUT_SECONDS = 6
 
@@ -98,7 +98,12 @@ internal class AudioCdnRedirectInterceptor(
          * landed.
          */
         val previouslyLearned = targets.shortcutFor(origin.url)
-        val shortcut = previouslyLearned?.takeIf(::isSafeAudioCdnRedirect)
+        val shortcut = previouslyLearned?.takeIf {
+            isSafeAudioCdnRedirect(it) && it.queryParameter("range") == null &&
+                (it.queryParameter("expire")?.toLongOrNull()?.let { expiry ->
+                    expiry > System.currentTimeMillis() / 1000L + 15L
+                } != false)
+        }
         if (previouslyLearned != null && shortcut == null) targets.forget(origin.url)
         // Anchor diagnostics on the original signed link for every internal request,
         // including a cross-group reissue and a fallback after a refused shortcut.
@@ -203,6 +208,10 @@ internal class AudioCdnRedirectInterceptor(
             // rate-limit breaker unchanged. All other HTTP errors retain the existing fallback
             // to the issuing URL, including a transient 5xx or a stale shortcut's 404.
             // Swallowing 429 behind that fallback concealed explicit back-off and sent another GET.
+            if (response.code in setOf(401, 403, 410)) {
+                targets.forget(origin.url)
+                return response
+            }
             if (usingShortcut && isCdnRefusalStatus(response.code) && response.code != 429) {
                 response.close()
                 targets.forget(origin.url)
@@ -233,7 +242,7 @@ internal class AudioCdnRedirectInterceptor(
             }
             if (target == null) {
                 // Where this landed is worth remembering only once it has actually served.
-                if (!isCdnRefusalStatus(response.code)) targets.remember(origin.url, request.url)
+                if (response.isSuccessful) targets.remember(origin.url, request.url)
                 return response
             }
 

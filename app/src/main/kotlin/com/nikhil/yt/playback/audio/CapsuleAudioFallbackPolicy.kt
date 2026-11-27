@@ -22,7 +22,7 @@ internal object CapsuleAudioFallbackPolicy {
     const val TVHTML5_SIMPLY = AudioClientOrder.TVHTML5_SIMPLY
 
     private val supportedProfiles = AudioClientOrder.supportedProfiles.toSet()
-    const val MAX_RESOLVE_ATTEMPTS = 3
+    const val MAX_RESOLVE_ATTEMPTS = 2
     private const val NORMAL_FALLBACK_DELAY_MS = 0L
     private const val BOT_FALLBACK_DELAY_MS = 1_000L
 
@@ -107,34 +107,19 @@ internal object CapsuleAudioFallbackPolicy {
 
     fun canFallbackAfter(kind: YouTubeFailureKind): Boolean =
         when (kind) {
-            YouTubeFailureKind.FORBIDDEN,
             YouTubeFailureKind.LOGIN_REQUIRED,
-            YouTubeFailureKind.AGE_RESTRICTED,
-            YouTubeFailureKind.UNPLAYABLE,
             YouTubeFailureKind.NONE,
-            // One bounded foreground alternate after a network /player timeout.
             YouTubeFailureKind.TRANSIENT,
             -> true
 
+            YouTubeFailureKind.FORBIDDEN,
+            YouTubeFailureKind.AGE_RESTRICTED,
+            YouTubeFailureKind.UNPLAYABLE,
             YouTubeFailureKind.RATE_LIMITED,
             YouTubeFailureKind.BOT_CHECK,
             YouTubeFailureKind.PERMANENT,
             -> false
         }
-
-    /** After a bot-check use the first later profile from a different user-ordered family. */
-    fun crossFamilyFallback(
-        plan: List<String>,
-        failedProfileId: String,
-    ): String? {
-        val failed = normalize(failedProfileId)
-        val failedIndex = plan.indexOfFirst { normalize(it) == failed }
-        if (failedIndex < 0) return null
-        val family = familyOf(failed)
-        return plan
-            .drop(failedIndex + 1)
-            .firstOrNull { familyOf(normalize(it)) != family }
-    }
 
     private fun profileEligible(
         profileId: String,
@@ -145,15 +130,6 @@ internal object CapsuleAudioFallbackPolicy {
         if (!isUploaded) return true
         return profileId == WEB_REMIX || (authenticated && profileId == WEB_CREATOR)
     }
-
-    private fun familyOf(profileId: String): String =
-        when (profileId) {
-            VISIONOS, VISIONOS_0_1 -> "VISION"
-            WEB_REMIX, WEB_CREATOR -> "WEB_MUSIC"
-            WEB_EMBEDDED -> "WEB_EMBEDDED"
-            TVHTML5_SIMPLY -> "TV"
-            else -> profileId
-        }
 
     private fun normalize(profileId: String): String =
         profileId.substringBefore('@').trim().uppercase(Locale.US)

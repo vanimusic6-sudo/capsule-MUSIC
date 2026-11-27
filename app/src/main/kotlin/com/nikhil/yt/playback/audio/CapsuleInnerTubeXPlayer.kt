@@ -87,7 +87,6 @@ object CapsuleInnerTubeXPlayer {
     private const val PER_REQUEST_TIMEOUT_MS = 8_000L
     private const val ENGINE_RESOLVE_TIMEOUT_MS = 18_000L
     private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
-    private const val MAX_SABR_ROLLOVERS = 1
     // A distinct audio transport, not an extra primary client in settings.
     private const val SABR_FALLBACK_PROFILE = "WEB_REMIX_SABR"
     private const val DIRECT_ATTEMPTS_BEFORE_SABR = 2
@@ -341,6 +340,7 @@ object CapsuleInnerTubeXPlayer {
                         )
                         withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+                            AudioAccessGate.check(videoId)
                             if (download) downloadBotGate.check()
                             // Decide after scheduling, using current readiness. A cold minter
                             // starts in an independent job and is never awaited by Vision.
@@ -365,42 +365,9 @@ object CapsuleInnerTubeXPlayer {
                                         configuredOrder, isStartupWebReady(), ::requestStartupWarmup,
                                     )
                                 }
-                            val advice = if (!download && !forceSabr)
-                                AudioRouteHistory.memory.advice(extractionBundle.key, videoId)
-                            else AudioRouteAdvice()
-                            // Keep user order for healthy songs. Only a previously accepted
-                            // route for this exact song/session can reorder its own plan.
-                            val effectiveOrder = advice.prioritize(baseOrder)
-                            val effectiveQuality = if (advice.preferAac &&
-                                resolvedQuality in setOf(InnerTubeXAudioQuality.HIGH, InnerTubeXAudioQuality.AUTO))
-                                InnerTubeXAudioQuality.MP4 else resolvedQuality
-                            if (effectiveQuality != resolvedQuality || effectiveOrder != baseOrder) {
-                                Timber.tag(TAG).i("AUDIO learned-route id=%s quality=%s preferred=%s",
-                                    videoId, effectiveQuality, effectiveOrder.first())
-                            }
-                            // Only confirmed CDN refusals activate the independent anonymous parser.
-                            // Never use it to evade account entitlement, uploads, proxy settings, or
-                            // server cooldown. Keep it inside the same serialized 18s resolve budget.
-                            if (!download && !forceSabr && effectivePriority() == AudioResolvePriority.PLAYBACK &&
-                                baseHints.isUploaded != true && extractionBundle.key.auth.cookie.isNullOrBlank() &&
-                                (extractionBundle.key.proxy == null || extractionBundle.key.proxy == Proxy.NO_PROXY) &&
-                                (YouTube.streamProxy == null || YouTube.streamProxy == Proxy.NO_PROXY) &&
-                                CapsulePlaybackSafety.optionalTrafficQuietRemainingMs() == 0L &&
-                                !com.nikhil.yt.innertube.CapsuleVideoRequestGuard.isBlocked() &&
-                                AudioRouteHistory.memory.claimPipePipe(extractionBundle.key, videoId)
-                            ) {
-                                val quality = when (effectiveQuality) {
-                                    InnerTubeXAudioQuality.MP4 -> com.nikhil.yt.innertube.video.PipeAudioQuality.AAC
-                                    InnerTubeXAudioQuality.LOW -> com.nikhil.yt.innertube.video.PipeAudioQuality.LOW
-                                    else -> com.nikhil.yt.innertube.video.PipeAudioQuality.HIGH
-                                }
-                                val parser = PipeAudioIpc.resolveRemote(videoId, quality, extractionBundle.key)
-                                currentCoroutineContext().ensureActive()
-                                CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
-                                if (parser != null && extractionBundle.key == sessionSnapshot()) {
-                                    return@withTimeout parser
-                                }
-                            }
+                            AudioAccessGate.check(videoId)
+                            val effectiveOrder = baseOrder
+                            val effectiveQuality = resolvedQuality
                             val primaryProfileId = effectiveOrder.first()
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s primaryProfile=%s",
@@ -484,8 +451,6 @@ object CapsuleInnerTubeXPlayer {
     ): ExtractedStream {
         var lastFailure: Exception? = null
         var transientFallbacks = 0
-        var botSignalAlreadySeen = false
-        var onlyPostBotProfile: String? = null
         var entitlementRecoveryProfile: String? = null
         val attempted = linkedSetOf<String>()
 
@@ -508,32 +473,14 @@ object CapsuleInnerTubeXPlayer {
                     preferredProfiles = preferredProfiles,
                 )
 
-            // Media3 reloads run in separate resolves. Two different direct
-            // CDN clients rejected on a long track should activate the SABR
-            // rescue once, instead of waiting for two more slow /player failures.
-            // Do not count an attempted profile twice or retry quarantined SABR.
-            val previousDirectFailures = excludedBeforeAttempt.count {
-                it != SABR_FALLBACK_PROFILE && it !in attempted &&
-                    it in AudioClientOrder.supportedProfiles
-            }
-            val sabrAttempts = if (!forceSabr && SABR_FALLBACK_PROFILE in excludedBeforeAttempt)
-                attempted + SABR_FALLBACK_PROFILE else attempted
             val sabrRoute = CapsuleSabrRoutePolicy.select(
-                forceSabr = forceSabr,
-                download = download,
-                priority = priorityBeforeAttempt,
-                botSignalAlreadySeen = botSignalAlreadySeen,
-                attempted = sabrAttempts,
-                previousDirectFailures = previousDirectFailures,
-                directCandidateAvailable = plan.any { it !in attempted },
+                forceSabr = forceSabr, download = download, attempted = attempted,
             )
             val profileId = if (forceSabr) {
                 // Exact experimental mode: do not silently fall back to Direct.
                 sabrRoute ?: throw (lastFailure ?: IllegalStateException("Forced SABR route exhausted"))
             } else {
-                onlyPostBotProfile
-                    ?.takeIf { it !in attempted && it in plan }
-                    ?: entitlementRecoveryProfile
+                entitlementRecoveryProfile
                         ?.takeIf { it !in attempted && extractionBundle.innerTube.hasSapCookieAuth() }
                     ?: sabrRoute
                     ?: plan.firstOrNull { it !in attempted }
@@ -552,6 +499,7 @@ object CapsuleInnerTubeXPlayer {
 
             attempted += profileId
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+            AudioAccessGate.check(videoId)
             val attemptStartedNs = System.nanoTime()
 
             val wireGeneration = CapsulePlaybackSafety.wireBotSignalGeneration()
@@ -605,6 +553,15 @@ object CapsuleInnerTubeXPlayer {
                         wireGenerationBeforeAttempt = wireGeneration,
                     )
                 val priorityAfterFailure = priorityProvider()
+                failure.audioAccessStopOrNull()?.let { stop ->
+                    if (stop.reason == AudioAccessStopReason.ACCESS_DENIED)
+                        AudioAccessGate.discipline.recordTrack(videoId)
+                    throw stop
+                }
+                if (kind == YouTubeFailureKind.FORBIDDEN) {
+                    AudioAccessGate.discipline.recordTrack(videoId)
+                    throw AudioAccessStopException(AudioAccessStopReason.ACCESS_DENIED)
+                }
                 Timber.tag(TAG).w(
                     "AUDIO profile result id=%s profile=%s outcome=failed kind=%s elapsedMs=%d",
                     videoId, profileId, kind,
@@ -636,55 +593,13 @@ object CapsuleInnerTubeXPlayer {
                 }
 
                 if (kind == YouTubeFailureKind.BOT_CHECK) {
-                    /*
-                     * Construct the foreground order from the state before this
-                     * attempt is quarantined. That preserves the failed profile's
-                     * position so crossFamilyFallback can choose exactly one later
-                     * family when a PREFETCH was promoted mid-request.
-                     */
-                    val foregroundPlan =
-                        CapsuleAudioFallbackPolicy.profilePlan(
-                            primaryProfileId = primaryProfileId,
-                            priority = AudioResolvePriority.PLAYBACK,
-                            authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
-                            isUploaded = baseHints.isUploaded == true,
-                            excludedProfiles = excludedBeforeAttempt,
-                            preferredProfiles = preferredProfiles,
-                        )
-
+                    AudioAccessGate.discipline.recordChallenge()
                     if (download) {
-                        // A challenge is not evidence that this client's format is broken.
-                        // Keep its identity after cooldown instead of rotating every minute.
                         downloadBotGate.onChallenge()
-                        Timber.tag(TAG).w("Download challenge; queue cooling down, no identity rollover")
                         throw DownloadBotCheckException(failure)
                     }
                     CapsulePlaybackSafety.markProfileBotCheck(profileId)
-                    markStreamClientFailed(videoId, profileId)
-                    Timber.tag(TAG).w(
-                        "AUDIO bot-check isolated id=%s priority=%s profile=%s",
-                        videoId,
-                        priorityAfterFailure,
-                        profileId,
-                    )
-
-                    if (priorityAfterFailure != AudioResolvePriority.PLAYBACK) throw failure
-
-                    if (botSignalAlreadySeen) {
-                        CapsulePlaybackSafety.markBotDetectionFailure(
-                            "confirmed across multiple AUDIO client profiles",
-                        )
-                        throw failure
-                    }
-
-                    val crossFamily =
-                        CapsuleAudioFallbackPolicy.crossFamilyFallback(foregroundPlan, profileId)
-                            ?: throw failure
-                    botSignalAlreadySeen = true
-                    onlyPostBotProfile = crossFamily
-                    lastFailure = failure
-                    delay(CapsuleAudioFallbackPolicy.fallbackDelayMs(kind))
-                    continue
+                    throw failure
                 }
 
                 if (kind == YouTubeFailureKind.LOGIN_REQUIRED ||
@@ -715,7 +630,6 @@ object CapsuleInnerTubeXPlayer {
                  * second user-visible playback failure.
                  */
                 if (
-                    onlyPostBotProfile != null ||
                     !canFallback ||
                     priorityAfterFailure == AudioResolvePriority.PREFETCH
                 ) {
@@ -743,71 +657,24 @@ object CapsuleInnerTubeXPlayer {
         audioQuality: InnerTubeXAudioQuality,
         download: Boolean = false,
     ): ExtractedStream {
-        var sabrRollovers = 0
-        var excludedClients = failedStreamClients(videoId, download = download)
-
-        while (true) {
-            val usingSabrRoute = !download &&
-                hints.playbackClientOverrideId == SABR_FALLBACK_PROFILE
-            val capabilities = if (usingSabrRoute) hints.withStreamCapabilities(
-                allowHls = false, allowSabr = true, allowBoundedRange = true,
-            ) else hints
-            val extracted =
-                requireNotNull(
-                    audioExtractorAttempt {
-                        (if (download) extractionBundle.downloadExtractor else extractionBundle.extractor).extract(
-                            videoId = videoId,
-                            hints = capabilities,
-                            excludedClients = CapsuleAudioClientStrategy.exclusions(excludedClients),
-                            audioQuality = audioQuality,
-                            clientPlaybackNonce = generateClientPlaybackNonce(),
-                        )
-                    },
-                ) { "InnerTubeX returned no playable AUDIO stream" }
-
-            if (usingSabrRoute) {
-                if (extracted.sabrBootstrap == null) {
-                    throw IllegalStateException("SABR profile returned no SABR session")
-                }
-                return extracted
-            }
-            if (extracted.sabrBootstrap == null) {
-                return extracted
-            }
-
-            /*
-             * Capsule currently consumes direct GVS URLs only. A SABR-only
-             * result is a client-local incompatibility, not a reason to crash
-             * the resolver. Retire that client for this song and permit exactly
-             * one bounded rollover.
-             */
-            val sabrClient =
-                CapsuleAudioClientStrategy.profileId(extracted.profileId)
-                    .substringBefore('@')
-                    .trim()
-                    .takeIf { it.isNotBlank() }
-
-            if (
-                sabrClient == null ||
-                sabrRollovers >= MAX_SABR_ROLLOVERS ||
-                sabrClient in excludedClients
-            ) {
-                throw IllegalStateException(
-                    "InnerTubeX returned SABR-only audio and no safe direct rollover remains",
-                )
-            }
-
-            markStreamClientFailed(videoId, sabrClient, download = download)
-            excludedClients = failedStreamClients(videoId, download = download)
-            sabrRollovers += 1
-            Timber.tag(TAG).w(
-                "Rejected SABR-only stream id=%s client=%s rollover=%d/%d",
-                videoId,
-                sabrClient,
-                sabrRollovers,
-                MAX_SABR_ROLLOVERS,
+        AudioAccessGate.check(videoId)
+        val usingSabrRoute = !download && hints.playbackClientOverrideId == SABR_FALLBACK_PROFILE
+        val capabilities = if (usingSabrRoute) hints.withStreamCapabilities(
+            allowHls = false, allowSabr = true, allowBoundedRange = true,
+        ) else hints
+        val extracted = requireNotNull(audioExtractorAttempt {
+            (if (download) extractionBundle.downloadExtractor else extractionBundle.extractor).extract(
+                videoId = videoId,
+                hints = capabilities,
+                excludedClients = CapsuleAudioClientStrategy.exclusions(failedStreamClients(videoId, download = download)),
+                audioQuality = audioQuality,
+                clientPlaybackNonce = generateClientPlaybackNonce(),
             )
+        }) { "InnerTubeX returned no playable AUDIO stream" }
+        check((extracted.sabrBootstrap != null) == usingSabrRoute) {
+            "AUDIO extractor returned an incompatible transport"
         }
+        return extracted
     }
 
     fun markStreamClientFailed(
@@ -839,7 +706,6 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun clearPlaybackState() {
-        AudioRouteHistory.memory.clear()
         entitlementFailures.clear()
         com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
@@ -849,7 +715,6 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun onNetworkChanged() {
-        AudioRouteHistory.memory.clear()
         entitlementFailures.clear()
         com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()

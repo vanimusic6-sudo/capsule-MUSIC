@@ -122,6 +122,7 @@ object CapsuleAudioEngine {
         forceSabr: Boolean = false,
     ): Result<PlaybackData> {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
+        AudioAccessGate.discipline.stopFor(videoId)?.let { return Result.failure(it) }
 
         return CapsuleInnerTubeXPlayer
             .resolveStream(
@@ -162,6 +163,7 @@ object CapsuleAudioEngine {
         playlistId: String? = null,
     ): Result<PlayerResponse> {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
+        AudioAccessGate.discipline.stopFor(videoId)?.let { return Result.failure(it) }
         return CapsuleAnonymousSession.player(
             videoId = videoId,
             client = YouTubeClient.VISIONOS,

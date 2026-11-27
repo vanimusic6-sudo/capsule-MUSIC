@@ -149,9 +149,17 @@ internal class ResolvingAudioDownloader(
                     return
                 } catch (failure: IOException) {
                     checkActive()
-                    val denied = generateSequence(failure as Throwable?) { it.cause }.take(12)
+                    val status = generateSequence(failure as Throwable?) { it.cause }.take(12)
                         .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
-                        .any { it.responseCode == 403 || it.responseCode == 410 }
+                        .firstOrNull()?.responseCode
+                    val denied = status in setOf(401, 403, 410)
+                    if (status in setOf(401, 403) || failure.audioAccessStopOrNull() != null) {
+                        if (status in setOf(401, 403)) recover(playback, failure)
+                        terminalRefusal = failure
+                        resolved = null
+                        expiresAtNs = 0L
+                        throw failure
+                    }
                     if (recoveries >= MAX_RECOVERIES) {
                         if (denied) {
                             recover(playback, failure) // retire external resume cache as well
@@ -198,5 +206,5 @@ internal class ResolvingAudioDownloader(
 
     override fun remove() { AudioCacheIdentity.remove(cache, mediaId) }
 
-    private companion object { const val MAX_RECOVERIES = 2 }
+    private companion object { const val MAX_RECOVERIES = 1 }
 }

@@ -1,31 +1,8 @@
 package com.nikhil.yt.playback.audio
 
-/** Developer-enforced SABR and bounded automatic fallback are different modes. */
+/** SABR remains an explicit developer transport, never a production retry. */
 internal object CapsuleSabrRoutePolicy {
     const val PROFILE = "WEB_REMIX_SABR"
-    private const val DIRECT_ATTEMPTS_BEFORE_SABR = 2
-
-    fun select(
-        forceSabr: Boolean,
-        download: Boolean,
-        priority: AudioResolvePriority,
-        botSignalAlreadySeen: Boolean,
-        attempted: Set<String>,
-        previousDirectFailures: Int = 0,
-        directCandidateAvailable: Boolean = false,
-    ): String? {
-        // Never replay a previously failed SABR route during its per-track cooldown.
-        // Direct CDN failures from prior Media3 reloads are as meaningful as
-        // direct /player failures inside this one resolve.
-        if (download || PROFILE in attempted) return null
-        if (forceSabr) return PROFILE
-        // Actual UMP sessions repeatedly returned HTTP 200 with zero bytes.
-        // Exhaust eligible direct routes first; keep forced SABR for diagnosis.
-        if (directCandidateAvailable) return null
-        return PROFILE.takeIf {
-            priority == AudioResolvePriority.PLAYBACK &&
-                !botSignalAlreadySeen &&
-                attempted.count { it != PROFILE } + previousDirectFailures >= DIRECT_ATTEMPTS_BEFORE_SABR
-        }
-    }
+    fun select(forceSabr: Boolean, download: Boolean, attempted: Set<String>): String? =
+        PROFILE.takeIf { forceSabr && !download && it !in attempted }
 }

@@ -627,6 +627,7 @@ class MusicService :
                 ?.takeIf { it.isNotBlank() }
                 ?: return
 
+        com.nikhil.yt.playback.audio.AudioAccessGate.check(mediaId)
         try {
             runBlocking {
                 suspend fun isRelevant(): Boolean =
@@ -1050,6 +1051,8 @@ class MusicService :
                     isUpcomingAudioNetworkEligible(mediaId)
                 }
                 if (!stillSafe || !isNetworkConnected.value ||
+                    com.nikhil.yt.playback.audio.AudioAccessGate.discipline.stopFor(mediaId) != null ||
+                    com.nikhil.yt.playback.audio.CapsulePlaybackSafety.optionalTrafficQuietRemainingMs() > 0L ||
                     AudioCacheIdentity.completeKey(downloadCache, mediaId) != null ||
                     AudioCacheIdentity.completeKey(playerCache, mediaId) != null
                 ) return@launch
@@ -4843,7 +4846,22 @@ class MusicService :
 
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
-        if (currentMediaId != null && httpStatusCode in setOf(401, 403, 410)) {
+        val accessStop = com.nikhil.yt.playback.audio.audioAccessStopFrom(error)
+        if (httpStatusCode in setOf(401, 403) || accessStop != null) {
+            if (httpStatusCode in setOf(401, 403)) currentMediaId?.let {
+                com.nikhil.yt.playback.audio.AudioAccessGate.discipline.recordTrack(it)
+            }
+            queueSkipBlockedForMediaId = currentMediaId
+            streamRetryJob?.cancel()
+            playbackRecoveryCoordinator.cancelNetworkRecovery()
+            audioResolveCoordinator.cancelAll()
+            currentMediaId?.let(playbackUrlCache::remove)
+            Timber.tag("PlaybackRecovery").w("AUDIO access-stop id=%s status=%s reason=%s; no automatic retry",
+                currentMediaId ?: "none", httpStatusCode, accessStop?.reason)
+            pausePlaybackFor("audio-access-stop")
+            return
+        }
+        if (currentMediaId != null && httpStatusCode == 410) {
             // A CDN 403/410 may still recover on this song. But if all same-song
             // recovery fails, never advance into the next queued song.
             queueSkipBlockedForMediaId = currentMediaId
@@ -4961,35 +4979,12 @@ class MusicService :
             // If an alternate extractor has already been tried after a CDN
             // failure, do not restart the whole waterfall on "no playable
             // stream". Let the bounded queue-failure guard choose the next song.
-            if (playbackRecoveryCoordinator.hasTriedAlternativeCdnClient(currentMediaId)) {
+            if (playbackRecoveryCoordinator.hasUsedCdnRecovery(currentMediaId)) {
                 Timber.tag("PlaybackRecovery").w(
                     "cdn-failover-exhausted id=%s alternate=no-playable-stream; terminal policy",
                     currentMediaId,
                 )
                 handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
-                return
-            }
-
-            val claimed = playbackRecoveryCoordinator.claimNoPlayableFreshResolve(currentMediaId)
-            val retryDelay = if (claimed) playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) else null
-            if (retryDelay != null && CapsuleAudioEngine.playbackBlockedExceptionOrNull() == null) {
-                // Clear only song-local extraction state. Keep the user's selected
-                // client/profile and every global anti-bot/rate-limit guard intact.
-                CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
-
-                audioResolveCoordinator.cancelMedia(currentMediaId) {
-                    playbackUrlCache.remove(currentMediaId)
-                }
-                Timber.tag(CAPSULE_RESOLVE_TAG).w(
-                    "No playable stream id=%s; scheduling one clean same-policy resolve",
-                    currentMediaId,
-                )
-                scheduleStreamRefreshRetry(
-                    mediaId = currentMediaId,
-                    refreshCipherConfig = false,
-                    retryReason = "no playable stream",
-                    retryDelayMs = retryDelay,
-                )
                 return
             }
 
@@ -5015,57 +5010,11 @@ class MusicService :
             return
         }
 
-        // Direct CDN and SABR are different byte transports negotiated by
-        // the same InnerTubeX resolver, not two independent player clients.
-        // A failed UMP session must never be reopened endlessly or mistaken
-        // for a broken Direct URL. Replace the Media3 source at its current
-        // presentation position so the new transport cannot mix encoded bytes.
+        // SABR is explicit developer diagnosis only; never turn a failed
+        // experimental transport into an automatic client cascade.
         if (currentMediaId != null && sabrTransportFailure != null) {
-            if (forceSabrAudio) {
-                // Strict developer diagnosis is intentionally SABR-only.
-                Timber.tag("CapsuleHybrid").w(
-                    "sabr-failed id=%s stage=%s mode=forced; direct fallback suppressed",
-                    currentMediaId, sabrTransportFailure.stage,
-                )
-                pausePlaybackFor("forced-sabr-transport-failed")
-                return
-            }
-            val action = playbackRecoveryCoordinator.onSabrTransportFailure(currentMediaId)
-            // The explicit SABR rollback is separately capped to ONE attempt
-            // by AudioCdnRecoveryPlan. It must remain available even if Direct
-            // already spent all three shared retry slots getting to SABR.
-            val retryDelay = if (action == AudioCdnRecoveryAction.TRY_NEXT_CLIENT)
-                minOf(350L, playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) ?: 350L)
-                else null
-            if (retryDelay == null) {
-                Timber.tag("CapsuleHybrid").w(
-                    "sabr-failed id=%s stage=%s action=bounded-stop",
-                    currentMediaId, sabrTransportFailure.stage,
-                )
-                handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
-                return
-            }
-            // Mark the *transport profile*, not the unrelated Direct WEB_REMIX
-            // identity. Cache and stream failures remain scoped to this song.
-            CapsuleAudioEngine.markStreamClientFailed(
-                videoId = currentMediaId,
-                clientKey = com.nikhil.yt.playback.audio.CapsuleSabrRoutePolicy.PROFILE,
-                httpStatusCode = null,
-            )
-            audioResolveCoordinator.cancelMedia(currentMediaId) {
-                playbackUrlCache.remove(currentMediaId)
-            }
-            Timber.tag("CapsuleHybrid").w(
-                "sabr-failed id=%s stage=%s action=direct-recovery delayMs=%d",
-                currentMediaId, sabrTransportFailure.stage, minOf(350L, retryDelay),
-            )
-            scheduleStreamRefreshRetry(
-                mediaId = currentMediaId,
-                refreshCipherConfig = false,
-                retryReason = "hybrid SABR-to-Direct",
-                retryDelayMs = minOf(350L, retryDelay),
-                forceRecreateSources = true,
-            )
+            audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
+            pausePlaybackFor("sabr-transport-failed")
             return
         }
 
@@ -5086,7 +5035,7 @@ class MusicService :
         }
 
         if (shouldAttemptStreamRefresh && currentMediaId != null) {
-            val signedUrlRejected = httpStatusCode in setOf(403, 410)
+            val signedUrlRejected = httpStatusCode == 410
             val cdnTransportFailure = requiresFreshCdnUrl
             // Only actual signed-URL rejections and typed CDN transport failures
             // use the compact two-client failover. HTTP 429/bot/offline have
@@ -5164,39 +5113,13 @@ class MusicService :
                     return
                 }
 
-                // A genuinely different client must issue its OWN /player
-                // request and signed URL. Changing only the headers on the old
-                // URL would not change the client that produced the stream.
-                val failedClient = (generateSequence(error as Throwable?) { it.cause }
-                    .take(12).filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
-                    .firstOrNull()?.dataSpec?.customData as? AudioCdnOpenContext)?.streamClient
-                    ?: playbackUrlCache.get(currentMediaId)?.streamClient
-                CapsuleAudioEngine.markStreamClientFailed(
-                    videoId = currentMediaId,
-                    clientKey = failedClient,
-                    httpStatusCode = httpStatusCode,
-                )
-                audioResolveCoordinator.cancelMedia(currentMediaId) {
-                    playbackUrlCache.remove(currentMediaId)
-                }
-                Timber.tag("PlaybackRecovery").i(
-                    "cdn-recovery id=%s action=next-client failedClient=%s delayMs=%d",
-                    currentMediaId,
-                    failedClient ?: "last-resolved",
-                    minOf(350L, retryDelay),
-                )
-                scheduleStreamRefreshRetry(
-                    mediaId = currentMediaId,
-                    refreshCipherConfig = false,
-                    retryReason = "cdn alternate client",
-                    retryDelayMs = minOf(350L, retryDelay),
-                    forceRecreateSources = true,
-                )
+                // The two recovery actions above exhaust the only allowed recovery.
+                handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
                 return
             }
 
             // Non-CDN HTTP errors keep the existing conservative retry rules.
-            if (playbackRecoveryCoordinator.hasTriedAlternativeCdnClient(currentMediaId)) {
+            if (playbackRecoveryCoordinator.hasUsedCdnRecovery(currentMediaId)) {
                 handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
                 return
             }
@@ -5280,7 +5203,7 @@ class MusicService :
                 // next capture says whether this is ever negotiated without anyone grepping for
                 // it.
                 .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
-                .retryOnConnectionFailure(true)
+                .retryOnConnectionFailure(false)
                 // Preserve the per-operation allowance for slow working routes. Failed opens and
                 // reads exit through the bounded fresh-URL recovery path instead of repeating here.
                 // See AUDIO_CDN_TIMEOUT_SECONDS for why the allowance is deliberately generous: a
@@ -5322,14 +5245,7 @@ class MusicService :
                             val context = spec.customData as? AudioCdnOpenContext
                             if (context != null) {
                                 playbackUrlCache.reject(context.mediaId, spec.uri.toString())
-                                if (status == 403 && context.routeSession != null &&
-                                    context.routeSession == com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer.sessionIdentity()
-                                ) {
-                                    com.nikhil.yt.playback.audio.AudioRouteHistory.memory.refused(
-                                        context.routeSession, context.mediaId, context.streamClient,
-                                        context.itag, spec.uri.host, com.nikhil.yt.playback.audio.AudioCdnLinkIdentity.ref(spec.uri.toString()),
-                                    )
-                                }
+                                if (status == 403) com.nikhil.yt.playback.audio.AudioAccessGate.discipline.recordTrack(context.mediaId)
                                 Timber.tag("PlaybackRecovery").i(
                                     "cdn-link-retired id=%s status=%d", context.mediaId, status,
                                 )
@@ -5339,14 +5255,6 @@ class MusicService :
                             val context = dataSpec.customData as? AudioCdnOpenContext
                             if (context != null) {
                                 audioCdnSkipBurstPolicy.onFirstByte(context.mediaId)
-                                if (context.routeSession != null &&
-                                    context.routeSession == com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer.sessionIdentity()
-                                ) {
-                                    com.nikhil.yt.playback.audio.AudioRouteHistory.memory.accepted(
-                                        context.routeSession, context.mediaId, context.streamClient,
-                                        context.itag, dataSpec.uri.host,
-                                    )
-                                }
                                 playbackUrlCache.markDeliveredAudioBytes(
                                     mediaId = context.mediaId,
                                     streamUrl = dataSpec.uri.toString(),

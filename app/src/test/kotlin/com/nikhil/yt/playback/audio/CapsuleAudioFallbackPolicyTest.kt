@@ -37,7 +37,6 @@ class CapsuleAudioFallbackPolicyTest {
             listOf(
                 "WEB_REMIX",
                 "VISIONOS_0_1",
-                "WEB_EMBEDDED_PLAYER",
             ),
             plan,
         )
@@ -66,11 +65,11 @@ class CapsuleAudioFallbackPolicyTest {
                 preferredProfiles = custom,
             )
 
-        assertEquals(custom.take(3), plan)
+        assertEquals(custom.take(2), plan)
     }
 
     @Test
-    fun authenticatedManualOrderIsCappedAtThreeForegroundProfiles() {
+    fun authenticatedManualOrderIsCappedAtTwoForegroundProfiles() {
         val custom =
             listOf(
                 "WEB_CREATOR",
@@ -91,7 +90,7 @@ class CapsuleAudioFallbackPolicyTest {
                 preferredProfiles = custom,
             )
 
-        assertEquals(custom.take(3), plan)
+        assertEquals(custom.take(2), plan)
     }
 
     @Test
@@ -114,7 +113,7 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
+            listOf("WEB_REMIX", "VISIONOS_0_1"),
             plan,
         )
     }
@@ -138,7 +137,7 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
+            listOf("WEB_REMIX", "VISIONOS_0_1"),
             plan,
         )
     }
@@ -160,7 +159,7 @@ class CapsuleAudioFallbackPolicyTest {
         val plan = CapsuleAudioFallbackPolicy.profilePlan(
             "WEB_REMIX", AudioResolvePriority.PLAYBACK, true, false, emptySet(), desired,
         )
-        assertEquals(desired.take(3), plan)
+        assertEquals(desired.take(2), plan)
     }
 
     @Test
@@ -183,7 +182,7 @@ class CapsuleAudioFallbackPolicyTest {
                 preferredProfiles = custom,
             )
 
-        assertEquals(custom.take(3), plan)
+        assertEquals(custom.take(2), plan)
     }
 
     @Test
@@ -232,7 +231,7 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("TVHTML5_SIMPLY", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
+            listOf("TVHTML5_SIMPLY", "VISIONOS_0_1"),
             plan,
         )
     }
@@ -242,34 +241,12 @@ class CapsuleAudioFallbackPolicyTest {
         val plan = CapsuleAudioFallbackPolicy.profilePlan(
             "WEB_REMIX", AudioResolvePriority.DOWNLOAD, false, false, setOf("WEB_REMIX"), custom,
         )
-        assertEquals(custom.drop(1), plan)
+        assertEquals(custom.drop(1).take(2), plan)
         assertTrue(plan.size <= CapsuleAudioFallbackPolicy.MAX_RESOLVE_ATTEMPTS)
         val speculative = CapsuleAudioFallbackPolicy.profilePlan(
             "WEB_REMIX", AudioResolvePriority.PREFETCH, false, false, setOf("WEB_REMIX"), custom,
         )
         assertTrue(speculative.isEmpty())
-    }
-
-    @Test
-    fun botFallbackFollowsUserOrderButCrossesFamily() {
-        val plan =
-            listOf(
-                "WEB_REMIX",
-                "WEB_CREATOR",
-                "TVHTML5_SIMPLY",
-                "VISIONOS_0_1",
-                "WEB_EMBEDDED_PLAYER",
-            )
-        assertEquals(
-            "TVHTML5_SIMPLY",
-            CapsuleAudioFallbackPolicy.crossFamilyFallback(plan, "WEB_REMIX"),
-        )
-        assertNull(
-            CapsuleAudioFallbackPolicy.crossFamilyFallback(
-                listOf("WEB_REMIX", "WEB_CREATOR"),
-                "WEB_REMIX",
-            ),
-        )
     }
 
     @Test
@@ -306,8 +283,8 @@ class CapsuleAudioFallbackPolicyTest {
         assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.TRANSIENT))
         assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.RATE_LIMITED))
         assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.PERMANENT))
-        assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.FORBIDDEN))
-        assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.UNPLAYABLE))
+        assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.FORBIDDEN))
+        assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.UNPLAYABLE))
     }
 
     @Test
@@ -325,7 +302,6 @@ class CapsuleAudioFallbackPolicyTest {
             listOf(
                 CapsuleAudioFallbackPolicy.VISIONOS_0_1,
                 CapsuleAudioFallbackPolicy.WEB_EMBEDDED,
-                CapsuleAudioFallbackPolicy.TVHTML5_SIMPLY,
             ),
             plan,
         )

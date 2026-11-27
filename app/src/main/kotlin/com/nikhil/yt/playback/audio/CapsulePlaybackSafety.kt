@@ -34,7 +34,9 @@ internal object CapsulePlaybackSafety {
     private val wireBotGeneration = AtomicLong(0L)
     private val optionalQuiet = OptionalYouTubeTrafficQuiet()
     /** Optional metadata, prefetch and downloads must yield to explicit server challenges. */
-    fun optionalTrafficQuietRemainingMs(): Long = optionalQuiet.remainingMs()
+    fun optionalTrafficQuietRemainingMs(): Long = maxOf(
+        optionalQuiet.remainingMs(), AudioAccessGate.discipline.globalRemainingMs(),
+    )
 
     @Synchronized
     fun remainingBlockMs(nowMs: Long = System.currentTimeMillis()): Long {
@@ -78,6 +80,7 @@ internal object CapsulePlaybackSafety {
     fun noteWireBotCheck() {
         wireBotGeneration.incrementAndGet()
         optionalQuiet.observeBotChallenge()
+        AudioAccessGate.discipline.recordChallenge()
     }
 
     fun wireBotSignalGeneration(): Long = wireBotGeneration.get()
@@ -130,7 +133,7 @@ internal object CapsulePlaybackSafety {
     fun markProfileBotCheck(profileId: String) {
         optionalQuiet.observeBotChallenge()
         Timber.tag(TAG).w(
-            "AUDIO bot-check kept local to current media resolve profile=%s",
+            "AUDIO bot-check profile=%s; no identity rollover",
             profileId,
         )
     }

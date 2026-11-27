@@ -155,7 +155,7 @@ constructor(
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
-            .retryOnConnectionFailure(true)
+            .retryOnConnectionFailure(false)
             .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
@@ -191,6 +191,7 @@ constructor(
     ): CapsuleAudioEngine.PlaybackData {
         repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
             awaitDownloadResolveWindow()
+            com.nikhil.yt.playback.audio.AudioAccessGate.check(mediaId)
             refreshDownloadNetworkHealth()
             val selection = playbackContext()
             // A signed URL is tied to a YouTube account/visitor as well as
@@ -279,13 +280,15 @@ constructor(
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
                     when {
-                        status == 403 || status == 410 -> {
+                        status == 401 || status == 403 -> {
+                            resumeUrls.reject(request.id, playback.streamUrl)
+                            com.nikhil.yt.playback.audio.AudioAccessGate.discipline.recordTrack(request.id)
+                            false
+                        }
+                        status == 410 -> {
                             // Quarantine a refused source for this download alone;
                             // retrying its same signed CDN link wastes the recovery budget.
                             resumeUrls.reject(request.id, playback.streamUrl)
-                            CapsuleAudioEngine.markDownloadStreamClientFailed(
-                                request.id, playback.streamClient, status,
-                            )
                             timber.log.Timber.tag("AudioDownload").w(
                                 "download-recover id=%s reason=cdn-refused code=%d client=%s",
                                 request.id, status, playback.streamClient ?: "unknown",
@@ -336,6 +339,7 @@ constructor(
                                     })
                                     .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
                             ) { spec ->
+                                com.nikhil.yt.playback.audio.AudioAccessGate.check(request.id)
                                 spec.buildUpon().apply {
                                     val length = playback.format.contentLength
                                     if (spec.length == C.LENGTH_UNSET.toLong() && length != null && length > spec.position) {
