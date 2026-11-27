@@ -2,7 +2,6 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -10,13 +9,16 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -29,8 +31,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 300f
-internal const val PLAYER_CLOSE_STIFFNESS = 250f
+internal const val PLAYER_OPEN_STIFFNESS = 270f
+internal const val PLAYER_CLOSE_STIFFNESS = 225f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -101,37 +103,44 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.69f
+internal const val PLAYER_MINI_FADE_END = 0.76f
 // Navigation clears the dock while the destination is still nearly transparent.
-internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0.025f, 0.22f)
+internal fun playerNavigationTuck(progress: Float): Float = playerSilkPhase(progress, 0.008f, 0.27f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSoftPhase(progress, 0.39f, PLAYER_MINI_FADE_END)
+    1f - playerSilkPhase(progress, 0.42f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float =
-    playerSoftPhase(progress, 0.075f, 0.52f)
+    playerSilkPhase(progress, 0.08f, 0.60f)
 
 /**
  * A small landing accent driven by actual closing velocity. It is zero at
  * both ends, continuous through a reversal, and never changes the sheet anchor.
- * Mini goes DOWN by at most 3 dp; the returning nav rises by at most 2 dp.
+ * Mini goes DOWN by at most 2.5 dp; the returning nav rises by at most 1.75 dp.
  */
 internal fun playerDockLanding(progress: Float, velocityFraction: Float): Float {
     if (!velocityFraction.isFinite() || velocityFraction >= 0f) return 0f
     val t = playerPhase(progress, 0.002f, 0.025f)
     val lobe = 4f * t * (1f - t)
-    val closingWeight = playerSoftPhase(-velocityFraction, 0f, 0.10f)
-    return lobe * lobe * closingWeight
+    val closingWeight = playerSilkPhase(-velocityFraction, 0f, 0.10f)
+    return lobe * lobe * lobe * closingWeight
 }
 
 internal fun playerMiniTravelPx(progress: Float, dockTop: Float, density: Float, velocityFraction: Float): Float {
     if (!dockTop.isFinite() || !density.isFinite() || density <= 0f) return 0f
-    return -dockTop.coerceAtLeast(0f) * playerFrameGeometryProgress(progress) +
-        3f * density * playerDockLanding(progress, velocityFraction)
+    val geometry = playerFrameGeometryProgress(progress)
+    // A small elastic lead lets Mini move as its own surface instead of being
+    // welded to the upper edge of the expanding page. Zero at the dock and
+    // after the optical handoff; the same curve reverses without a jump.
+    val t = playerPhase(progress, 0.025f, PLAYER_MINI_FADE_END)
+    val bell = 4f * t * (1f - t)
+    return -dockTop.coerceAtLeast(0f) * geometry -
+        minOf(7f * density, dockTop.coerceAtLeast(0f) * 0.025f) * bell * bell * bell +
+        2.5f * density * playerDockLanding(progress, velocityFraction)
 }
 
 internal fun playerNavigationTravelPx(progress: Float, distance: Float, density: Float, velocityFraction: Float): Float {
     if (!distance.isFinite() || !density.isFinite() || density <= 0f) return 0f
     return distance.coerceAtLeast(0f) * playerNavigationTuck(progress) -
-        2f * density * playerDockLanding(progress, velocityFraction)
+        1.75f * density * playerDockLanding(progress, velocityFraction)
 }
 
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
@@ -139,6 +148,12 @@ internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
     val t = playerPhase(progress, start, end)
     return t * t * (3f - 2f * t)
+}
+
+/** C2 optical/spatial handoff, with zero acceleration at both ends. */
+internal fun playerSilkPhase(progress: Float, start: Float, end: Float): Float {
+    val t = playerPhase(progress, start, end)
+    return (t * t * t * (10f + t * (-15f + 6f * t))).coerceIn(0f, 1f)
 }
 
 // Opacity phases have soft endpoints, but geometry follows the physical progress.
@@ -243,6 +258,8 @@ internal fun PlayerSceneBackdrop(
     blocked: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val currentProgress by rememberUpdatedState(progress)
+    val drawHome by remember { derivedStateOf { playerSceneNeedsDrawing(currentProgress()) } }
     Box(
         modifier.fillMaxSize()
             // Keep the modifier/node topology stable while semantics queries force remeasure.
@@ -261,22 +278,14 @@ internal fun PlayerSceneBackdrop(
             } else Modifier)
             // Read transition state in drawing/layer properties, not composition or measurement.
             // Once the opaque player covers the scene, even its draw recording can sleep.
-            .drawWithContent { if (playerSceneNeedsDrawing(progress())) drawContent() },
+            .drawWithContent { if (drawHome) drawContent() },
     ) {
         content()
-        Canvas(Modifier.fillMaxSize()) {
-            val opacity = playerSceneDim(progress())
-            if (opacity > 0f) drawRect(Color.Black.copy(alpha = opacity))
-        }
     }
 }
 
 /** On a navigation-rail layout the rail remains a visible sibling pane. */
-internal fun Modifier.playerRailFocus(progress: () -> Float): Modifier = drawWithContent {
-    drawContent()
-    val opacity = playerSceneDim(progress())
-    if (opacity > 0f) drawRect(Color.Black.copy(alpha = opacity))
-}
+internal fun Modifier.playerRailFocus(progress: () -> Float): Modifier = this
 
 internal data class PlayerFrameContour(
     val radius: Float,
@@ -286,8 +295,8 @@ internal data class PlayerFrameContour(
 /** The mini's round corners follow the growing frame, then disappear outside the viewport. */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = (miniRadius + (maxOf(miniRadius, 24f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.35f)) *
-        (1f - playerSoftPhase(p, 0.68f, 1f))
+    val radius = (miniRadius + (maxOf(miniRadius, 24f * density) - miniRadius) * playerSilkPhase(p, 0f, 0.45f)) *
+        (1f - playerSilkPhase(p, 0.64f, 1f))
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
