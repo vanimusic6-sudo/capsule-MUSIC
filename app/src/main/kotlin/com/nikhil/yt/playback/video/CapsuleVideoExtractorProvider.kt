@@ -50,6 +50,9 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                 ?.let(CapsuleNewPipeExtractor::invalidate)
             return Bundle.EMPTY
         }
+        if (method == com.nikhil.yt.playback.audio.PipeAudioIpc.METHOD) {
+            return com.nikhil.yt.playback.audio.PipeAudioIpc.resolve(requestId, extras)
+        }
         if (method != CapsuleVideoIpc.METHOD_RESOLVE) {
             return CapsuleVideoIpc.failureBundle(
                 CapsuleVideoFailure.UNKNOWN,

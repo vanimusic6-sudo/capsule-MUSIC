@@ -10,9 +10,37 @@ import dev.maxrave.pipepipe.extractor.stream.VideoStream
 internal object CapsulePipePipeExtractor {
     private var initialized = false
 
+    private fun initialize() {
+        if (!initialized) { NewPipe.init(CapsulePipePipeDownloader()); initialized = true }
+    }
+
+    /** Same isolated parser instance and lock as VIDEO; do not fetch artwork or related items. */
+    @Synchronized
+    fun resolveAudio(id: String, quality: PipeAudioQuality): PipeAudioStream? {
+        VideoExtractionRequests.checkActive()
+        require(id.matches(Regex("[A-Za-z0-9_-]{11}")))
+        initialize()
+        val url = "https://www.youtube.com/watch?v=$id"
+        val extractor = NewPipe.getServiceByUrl(url).getStreamExtractor(url)
+        extractor.fetchPage()
+        VideoExtractionRequests.checkActive()
+        if (extractor.id != id) return null
+        if (extractor.ageLimit != 0) throw PipeAudioAccessRestrictedException()
+        val candidates = extractor.audioStreams.asSequence()
+            .filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
+            .mapNotNull { stream ->
+                val info = stream.itagItem
+                PipeAudioStream.fromMetadata(id, stream.content, stream.itag,
+                    stream.format?.mimeType.orEmpty(), stream.codec.orEmpty(),
+                    stream.bitrate, info?.contentLength, info?.sampleRate, info?.approxDurationMs)
+            }.toList()
+        VideoExtractionRequests.checkActive()
+        return selectPipeAudio(candidates, quality)
+    }
+
     @Synchronized
     fun resolve(id: String, quality: CapsuleNewPipeQuality, muxedOnly: Boolean): CapsuleNewPipeResolved? {
-        if (!initialized) { NewPipe.init(CapsulePipePipeDownloader()); initialized = true }
+        initialize()
         val url = "https://www.youtube.com/watch?v=$id"
         val extractor = NewPipe.getServiceByUrl(url).getStreamExtractor(url)
         extractor.fetchPage()

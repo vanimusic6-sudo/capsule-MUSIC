@@ -42,6 +42,34 @@ class AudioRouteMemoryTest {
         assertEquals(AudioRouteAdvice(), m.advice("wifi", "song"))
     }
 
+    @Test fun pipePipeProbeNeedsDistinctRefusalsAndIsBoundedToTrackAndSession() {
+        var now = 0L
+        val m = AudioRouteMemory({ now })
+        m.refused("wifi", "song", "WEB_REMIX", 251, host, "one")
+        assertFalse(m.claimPipePipe("wifi", "song"))
+        m.refused("wifi", "song", "WEB_REMIX", 251, host, "two")
+        assertFalse(m.claimPipePipe("wifi", "other"))
+        assertFalse(m.claimPipePipe("mobile", "song"))
+        assertTrue(m.claimPipePipe("wifi", "song"))
+        assertFalse(m.claimPipePipe("wifi", "song"))
+        now = 60_001L
+        assertTrue(m.claimPipePipe("wifi", "song"))
+        m.refused("wifi", "song", PIPE_AUDIO_CLIENT, 140, host, "three")
+        now += 60_001L
+        assertFalse(m.claimPipePipe("wifi", "song"))
+    }
+
+    @Test fun successfulPipePipeCanBeReusedButNotAfterCdnRefusal() {
+        val m = AudioRouteMemory()
+        m.refused("wifi", "song", "WEB_REMIX", 251, host, "one")
+        m.refused("wifi", "song", "WEB_REMIX", 251, host, "two")
+        assertTrue(m.claimPipePipe("wifi", "song"))
+        m.accepted("wifi", "song", PIPE_AUDIO_CLIENT, 140, host)
+        assertTrue(m.claimPipePipe("wifi", "song"))
+        m.refused("wifi", "song", PIPE_AUDIO_CLIENT, 140, host, "three")
+        assertFalse(m.claimPipePipe("wifi", "song"))
+    }
+
     @Test fun noLearningForUnrelatedHostOrHealthyTrack() {
         val m = AudioRouteMemory()
         m.refused("wifi", "song", "WEB_REMIX", 251, "evil.test", "one")

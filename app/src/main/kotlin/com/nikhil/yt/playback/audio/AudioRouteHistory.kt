@@ -21,6 +21,7 @@ internal class AudioRouteMemory(
         val refusals: LinkedHashMap<String, Route> = LinkedHashMap(),
         var accepted: Route? = null,
         var until: Long = 0L,
+        var pipeRetryAfter: Long = 0L,
     )
     private var session: Any? = null
     private val entries = LinkedHashMap<String, Entry>(16, .75f, true)
@@ -60,6 +61,7 @@ internal class AudioRouteMemory(
         // Keep only one confirmed route and avoid extending TTL on every range.
         if (e.accepted == accepted) return
         e.accepted = accepted
+        if (accepted.client == PIPE_AUDIO_CLIENT) e.pipeRetryAfter = 0L
         e.until = nowMs() + ttlMs
     }
 
@@ -72,8 +74,22 @@ internal class AudioRouteMemory(
         return AudioRouteAdvice(preferAac, accepted?.client)
     }
 
+    /** At most one independent parser probe per minute for a repeatedly refused track.
+     * A confirmed parser link which later received 403 is not retried during this evidence TTL.
+     */
+    @Synchronized fun claimPipePipe(identity: Any, id: String): Boolean {
+        if (session != identity) return false
+        val e = live(id) ?: return false
+        if (e.refusals.size < 2 || e.pipeRetryAfter > nowMs() ||
+            e.refusals.values.any { it.client == PIPE_AUDIO_CLIENT }) return false
+        e.pipeRetryAfter = nowMs() + 60_000L
+        return true
+    }
+
     @Synchronized fun clear() { entries.clear(); session = null }
 }
+
+internal const val PIPE_AUDIO_CLIENT = "PIPEPIPE_AUDIO"
 
 internal object AudioRouteHistory {
     val memory = AudioRouteMemory()

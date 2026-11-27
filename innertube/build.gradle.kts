@@ -15,7 +15,7 @@ dependencies {
     implementation(libs.ktor.client.encoding)
     implementation(libs.brotli)
     implementation(libs.newpipe.extractor)
-    // Separate namespace: VIDEO fallback only, never replaces AUDIO.
+    // Separate namespace: isolated VIDEO parser and conditional AUDIO reserve.
     implementation(libs.pipepipe.extractor) {
         // PipePipe's unused full runtime duplicates NewPipe's protobuf-lite.
         // Its YouTube models use Wire; retain the existing lite runtime.

@@ -378,6 +378,29 @@ object CapsuleInnerTubeXPlayer {
                                 Timber.tag(TAG).i("AUDIO learned-route id=%s quality=%s preferred=%s",
                                     videoId, effectiveQuality, effectiveOrder.first())
                             }
+                            // Only confirmed CDN refusals activate the independent anonymous parser.
+                            // Never use it to evade account entitlement, uploads, proxy settings, or
+                            // server cooldown. Keep it inside the same serialized 18s resolve budget.
+                            if (!download && !forceSabr && effectivePriority() == AudioResolvePriority.PLAYBACK &&
+                                baseHints.isUploaded != true && extractionBundle.key.auth.cookie.isNullOrBlank() &&
+                                (extractionBundle.key.proxy == null || extractionBundle.key.proxy == Proxy.NO_PROXY) &&
+                                (YouTube.streamProxy == null || YouTube.streamProxy == Proxy.NO_PROXY) &&
+                                CapsulePlaybackSafety.optionalTrafficQuietRemainingMs() == 0L &&
+                                !com.nikhil.yt.innertube.CapsuleVideoRequestGuard.isBlocked() &&
+                                AudioRouteHistory.memory.claimPipePipe(extractionBundle.key, videoId)
+                            ) {
+                                val quality = when (effectiveQuality) {
+                                    InnerTubeXAudioQuality.MP4 -> com.nikhil.yt.innertube.video.PipeAudioQuality.AAC
+                                    InnerTubeXAudioQuality.LOW -> com.nikhil.yt.innertube.video.PipeAudioQuality.LOW
+                                    else -> com.nikhil.yt.innertube.video.PipeAudioQuality.HIGH
+                                }
+                                val parser = PipeAudioIpc.resolveRemote(videoId, quality, extractionBundle.key)
+                                currentCoroutineContext().ensureActive()
+                                CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+                                if (parser != null && extractionBundle.key == sessionSnapshot()) {
+                                    return@withTimeout parser
+                                }
+                            }
                             val primaryProfileId = effectiveOrder.first()
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s primaryProfile=%s",
