@@ -156,11 +156,9 @@ internal fun capsuleVideoInitialPosition(
     val position = audioPositionMs.coerceAtLeast(0L)
     // The clip may be shorter than MUSIC; do not accidentally start beyond EOF.
     if (position >= duration - 3_000L) return null
-    // On-device Oct 25 A/B: indexed DASH needed ~2.0-2.2 s to become READY.
-    // A 1.4 s head start left the decoder 582-779 ms behind the live music,
-    // forcing a second network seek and sometimes a third buffered correction.
-    // Predict the measured READY interval, not the earlier first-frame time.
-    // Still keep pause, unknown duration and near-EOF paths unchanged.
+    // Latest cold CDN index opens take 2.7–3.4s. Predict READY rather
+    // than frame-zero decode, but prefer measured delivery-specific history.
+    // Pause, unknown duration and near-EOF paths remain unchanged.
     val prediction = if (!audioPlaying) 0L else (
         measuredReadyMs?.takeIf { it in 700L..6_000L } ?: when (resolved.delivery) {
             CapsuleVideoDelivery.SABR -> 4_500L

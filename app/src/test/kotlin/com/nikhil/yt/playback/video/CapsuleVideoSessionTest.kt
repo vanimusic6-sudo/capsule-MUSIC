@@ -154,7 +154,7 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
-    @Test fun measuredTwoSecondDashStartupAvoidsBothCorrectionSeeks() = runTest {
+    @Test fun predictedDashStartupAvoidsBothCorrectionSeeks() = runTest {
         val f = Fixture(this)
         f.music.position = 5_440L
         f.session.setSurfaceAttached(true)
@@ -222,8 +222,8 @@ class CapsuleVideoSessionTest {
         assertEquals(14_500L, capsuleVideoInitialPosition(item, 10_000L, true))
         assertEquals(10_000L, capsuleVideoInitialPosition(item, 10_000L, false))
         assertNull(capsuleVideoInitialPosition(item, 238_000L, true))
-        // Existing DASH A/B retains its distinct 2s timing.
-        assertEquals(12_000L, capsuleVideoInitialPosition(indexedVideoItem(), 10_000L, true))
+        // DASH has its own measured cold-start lead.
+        assertEquals(13_200L, capsuleVideoInitialPosition(indexedVideoItem(), 10_000L, true))
     }
 
     @Test fun frameReadyTracksOrderingAndShortSeam() = runTest {
