@@ -531,6 +531,7 @@ internal class CapsuleVideoSession(
             buffering = !committed || video.playbackState == Player.STATE_BUFFERING,
             ready = committed && ready,
             owner = "video",
+            bufferedAheadMs = (video.bufferedPosition - video.currentPosition).coerceAtLeast(0L),
         )
         // After the first presentation, VIDEO owns the session through seeks,
         // buffering, pauses and detached surfaces. Silence while loading is
@@ -759,6 +760,7 @@ internal class CapsuleVideoSession(
             var startupMs = 0L
             var startupIdleMs = 0L
             var stallMs = 0L
+            var rebufferMs = 0L
             var previousBufferedMs = video.bufferedPosition
             var previousPositionMs = video.currentPosition
             var previousFrameRevision = renderedFrameRevision
@@ -783,9 +785,13 @@ internal class CapsuleVideoSession(
                     startupIdleMs = if (progressed) 0L else startupIdleMs + 500L
                 }
                 if (ready && frameReported) { startupMs = 0L; startupIdleMs = 0L }
-                if ((rendering || committed) && audio.playWhenReady &&
-                    video.playbackState == Player.STATE_BUFFERING && !progressed
-                ) stallMs += 500L else stallMs = 0L
+                val buffering = (rendering || committed) && audio.playWhenReady &&
+                    video.playbackState == Player.STATE_BUFFERING
+                stallMs = if (buffering && !progressed) stallMs + 500L else 0L
+                // Tiny increments of buffered position can keep the idle timer
+                // alive forever without ever reaching READY. Bound the whole
+                // continuous rebuffer episode separately from the idle timer.
+                rebufferMs = if (committed && buffering) rebufferMs + 500L else 0L
                 if (foreground && !surfaceAttached && !surfaceEverAttachedForSession &&
                     startupMs >= 8_000L
                 ) {
@@ -795,11 +801,13 @@ internal class CapsuleVideoSession(
                 // A first frame/alignment seek is real progress. Do not throw away a
                 // healthy long clip at eight seconds while it is still synchronizing.
                 // Keep both the no-progress deadline and a hard overall startup bound.
-                if (startupIdleMs >= startupBudgetMs || startupMs >= 30_000L || stallMs >= 12_000L) {
+                if (startupIdleMs >= startupBudgetMs || startupMs >= 30_000L ||
+                    stallMs >= 12_000L || rebufferMs >= 30_000L
+                ) {
                     Timber.tag("CapsuleVideo").w(
-                        "VIDEO cold startup timeout surface=%s frame=%s selectedAudio=%s videoState=%s playing=%s musicMs=%s videoMs=%s",
+                        "VIDEO readiness timeout surface=%s frame=%s selectedAudio=%s videoState=%s playing=%s musicMs=%s videoMs=%s rebufferMs=%s",
                         surfaceAttached, firstFrame, hasAudio, video.playbackState,
-                        video.isPlaying, audio.currentPosition, video.currentPosition,
+                        video.isPlaying, audio.currentPosition, video.currentPosition, rebufferMs,
                     )
                     fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break

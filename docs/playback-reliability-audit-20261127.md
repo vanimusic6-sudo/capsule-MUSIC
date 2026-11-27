@@ -1,0 +1,18 @@
+# Playback reliability audit — 2026-11-27
+
+Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static audit; device traces, full Gradle resolution and end-to-end testing remain required.
+
+## Confirmed findings
+- Video's session watchdog previously reset its idle timer on any increase of buffered position. After presentation it had no overall continuous rebuffer deadline. A slowly progressing but never READY source could remain stuck indefinitely. Add a 30 s continuous rebuffer ceiling while preserving the 12 s no-progress deadline.
+- DownloadPlaybackNetworkPriority previously released all download workers after 12 s even if the foreground player still buffered. Use bounded recurring priority periods for actual players (12 s priority, 3 s download opportunity). Metadata resolve retains its one-shot limit. Supply the video buffered-ahead sample for its READY refill decision.
+- Audio resolve already has a single-flight coordinator, 8 s request timeout, 18 s extraction budget, and separate CDN/session recovery. Review actual total deadline and cancellation across scheduler, transport, Loader and service; do not blindly increase retries.
+- Audio load control already targets 180 s, 6 MiB, 2.5 s start and 8 s rebuffer. Larger buffers alone cannot fix sustained throughput below media bitrate.
+- Video uses its own player, bandwidth meter, DASH/HLS and progressive/SABR routes. Keep audio audible until actual video readiness. Test timeline preservation and audio ownership on every recovery.
+- Route changes invalidate audio extraction state; verify recovery while playing, not only after explicit retry. Verify video route state and download resume independently.
+
+## Remaining work
+- Resolve and audit the full Gradle dependency graph, CVEs and transitive licenses; verify Ktor 3.6.2 with the pinned toolchain. Media3 1.11.1 is the stable release; 1.12.0-rc01 is not chosen for this reliability branch.
+- Unify recovery ownership, absolute deadline, and typed outcomes without multiplying retries. Distinguish transport interruption, expired URL, format mismatch, authorization, rate-limit, unavailable content and cancellation. Honor authorization and rate limits; never disable TLS verification.
+- Measure effective throughput and headroom; choose quality only at safe representation boundaries. Keep cache identity format-aware; validate Range/Content-Range and refuse mismatched byte sequences.
+- Test network switch, stalled reads, trickle responses, short EOF, 403/410/429, cancellation, repeated seeks, offline cache, concurrent downloads, and long playback. Capture p50/p95 start, rebuffer ratio, retry count, bytes wasted, thermal state and battery. No credentials or signed URLs in logs.
+- This change is not a full engine rewrite and has not been validated on device.

@@ -14,7 +14,8 @@ import java.io.InputStream
  *
  * Observe Media3 state changes (never poll the player off its application looper).
  * A buffering episode gets a bounded head start; a READY transition gets a short
- * refill window. A stuck player does not freeze unrelated downloads indefinitely.
+ * refill window. During prolonged player buffering, downloads receive periodic
+ * bounded opportunities instead of permanently competing for the foreground link.
  */
 internal class DownloadPlaybackNetworkPriority(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
@@ -56,11 +57,16 @@ internal class DownloadPlaybackNetworkPriority(
 
     fun shouldYield(): Boolean {
         val now = nowMs()
-        return snapshots.values.any { current ->
+        return snapshots.any { (owner, current) ->
             val elapsed = now - current.enteredAtMs
             elapsed >= 0L && when (current.phase) {
                 Phase.IDLE -> false
-                Phase.BUFFERING -> elapsed < MAX_BUFFERING_YIELD_MS
+                Phase.BUFFERING -> if (owner == "audio" || owner == "video") {
+                    // A real player that is still buffering needs continued
+                    // protection, but downloads retain a periodic opportunity.
+                    elapsed % (MAX_BUFFERING_YIELD_MS + BUFFERING_DOWNLOAD_WINDOW_MS) <
+                        MAX_BUFFERING_YIELD_MS
+                } else elapsed < MAX_BUFFERING_YIELD_MS
                 Phase.READY -> elapsed < if (current.lowHeadroomOnReady)
                     LOW_HEADROOM_REFILL_YIELD_MS else READY_REFILL_YIELD_MS
             }
@@ -69,6 +75,7 @@ internal class DownloadPlaybackNetworkPriority(
 
     companion object {
         internal const val MAX_BUFFERING_YIELD_MS = 12_000L
+        internal const val BUFFERING_DOWNLOAD_WINDOW_MS = 3_000L
         internal const val READY_REFILL_YIELD_MS = 2_500L
         // 20:54:49 capture: READY at just 2.8 seconds buffered, then a 7s
         // rebuffer while batch downloads were running. Do not release all

@@ -546,6 +546,23 @@ class CapsuleVideoSessionTest {
         assertEquals(owners, f.owned)
         f.session.stop()
     }
+    @Test fun continuousRebufferWithTinyProgressCannotKeepVideoStuckForever() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261); runCurrent()
+        f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.event()
+        repeat(59) {
+            f.clip.buffered += 1L
+            advanceTimeBy(500); runCurrent()
+            assertTrue(f.failures.isEmpty())
+        }
+        f.clip.buffered += 1L
+        advanceTimeBy(500); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertTrue(f.failures.single() is java.net.SocketTimeoutException)
+        assertEquals(1f, f.music.volume)
+        f.session.stop()
+    }
+
     @Test fun permanentStallStillRestoresMusicAfterTheBoundedVideoTimeout() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(261); runCurrent()

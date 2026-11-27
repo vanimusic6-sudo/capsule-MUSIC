@@ -17,6 +17,23 @@ class DownloadPlaybackNetworkPriorityTest {
         assertFalse(priority.shouldYield())
     }
 
+    @Test fun prolongedPlayerBufferingRestoresPriorityAfterDownloadOpportunity() {
+        priority.observe("song-a", true, true, false)
+        nowMs += DownloadPlaybackNetworkPriority.MAX_BUFFERING_YIELD_MS
+        assertFalse(priority.shouldYield())
+        nowMs += DownloadPlaybackNetworkPriority.BUFFERING_DOWNLOAD_WINDOW_MS
+        assertTrue(priority.shouldYield())
+        priority.observe("song-a", false, false, false)
+        assertFalse(priority.shouldYield())
+    }
+
+    @Test fun videoResolveDoesNotStartAnotherPriorityCycle() {
+        priority.observe("song-a", true, true, false, owner = "video-resolve")
+        nowMs += DownloadPlaybackNetworkPriority.MAX_BUFFERING_YIELD_MS +
+            DownloadPlaybackNetworkPriority.BUFFERING_DOWNLOAD_WINDOW_MS
+        assertFalse(priority.shouldYield())
+    }
+
     @Test fun readyPlaybackGetsOneShortRefillWindowWithoutPollingExtension() {
         priority.observe("song-a", playWhenReady = true, buffering = true, ready = false)
         nowMs += 400
