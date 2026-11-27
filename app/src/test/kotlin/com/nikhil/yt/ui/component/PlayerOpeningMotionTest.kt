@@ -262,8 +262,9 @@ class PlayerOpeningMotionTest {
         for (density in listOf(1f, 2f, 3.5f)) {
             assertEquals(0f, playerMiniTravelPx(0f, 590f * density, density, -1f), 0f)
             assertEquals(0f, playerNavigationTravelPx(0f, 60f * density, density, -1f), 0f)
-            assertEquals(2.5f * density, playerMiniTravelPx(0.0262f, 590f * density, density, -0.3f) - playerMiniTravelPx(0.0262f, 590f * density, density, 0f), 0.001f)
-            assertEquals(-1.75f * density, playerNavigationTravelPx(0.0262f, 60f * density, density, -0.3f) - playerNavigationTravelPx(0.0262f, 60f * density, density, 0f), 0.001f)
+            assertEquals(1.75f * density, playerMiniTravelPx(0.0262f, 590f * density, density, -0.3f) - playerMiniTravelPx(0.0262f, 590f * density, density, 0f), 0.001f)
+            assertEquals(1.25f * density, (playerNavigationStretch(0.0262f, 60f * density, density, -0.3f) - 1f) * 60f * density, 0.001f)
+            assertEquals(1f, playerNavigationStretch(0f, 60f * density, density, -1f), 0f)
             assertEquals(0f, playerDockLanding(0.0262f, 0.3f), 0f)
             assertEquals(0f, playerDockLanding(0.0262f, Float.NaN), 0f)
             for (i in 0..1000) {
@@ -271,8 +272,16 @@ class PlayerOpeningMotionTest {
                 val landing = playerDockLanding(p, -0.3f)
                 assertTrue(landing in 0f..1f)
                 if (p >= 0.085f || p <= 0.001f) assertEquals(0f, landing, 0.0001f)
-                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 2.5f * density + 0.001f)
-                assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -1.75f * density - 0.001f)
+                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 1.75f * density + 0.001f)
+                val height = 60f * density
+                val translation = playerNavigationTravelPx(p, height, density, -0.3f)
+                val stretch = playerNavigationStretch(p, height, density, -0.3f)
+                assertTrue("Bottom edge may never rise above screen", translation in 0f..height)
+                assertTrue("Stretch is small", stretch in 1f..1.03501f)
+                assertTrue((stretch - 1f) * height <= 1.25f * density + 0.001f)
+                // Bottom-pivot transform fixes the bottom for every scale.
+                val transformedBottom = height + (height - height) * stretch + translation
+                assertTrue(transformedBottom >= height)
             }
         }
     }
@@ -306,8 +315,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 85f..140f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 795f)
+            assertTrue("Responsive first two frames", at(33) in 60f..90f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 730f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -315,7 +324,7 @@ class PlayerOpeningMotionTest {
                 assertTrue(value in 0f..1000.01f)
                 previous = value
             }
-            assertTrue("No persistent animation", animation.durationNanos < 600_000_000L)
+            assertTrue("No persistent animation", animation.durationNanos < 800_000_000L)
         }
         val reversal = TargetBasedAnimation(
             animationSpec = PlayerCloseAnimation, typeConverter = Float.VectorConverter,
@@ -331,10 +340,10 @@ class PlayerOpeningMotionTest {
     @Test fun fullPlayerMotionFinishesWithinShortBoundedTime() {
         mount()
         compose.runOnIdle { state.expandSoft() }
-        advance(650)
+        advance(850)
         compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
         compose.runOnIdle { state.collapseSoft() }
-        advance(650)
+        advance(850)
         compose.runOnIdle { assertTrue(state.isCollapsed); assertFalse(state.isAnimationRunning) }
     }
 
@@ -405,9 +414,9 @@ class PlayerOpeningMotionTest {
             val close = ((1.0 + closeRate * t) * kotlin.math.exp(-closeRate * t)).toFloat()
             val velocity = (-closeRate * closeRate * t * kotlin.math.exp(-closeRate * t)).toFloat()
             val nav = playerNavigationTuck(open)
-            val accent = 2.5f * playerDockLanding(close, velocity)
-            assertTrue("Avoid a fast navigation shove", nav - previousNav < 0.038f)
-            assertTrue("Elastic accent builds and releases gently", kotlin.math.abs(accent - previousAccent) < 0.06f)
+            val accent = 1.75f * playerDockLanding(close, velocity)
+            assertTrue("Avoid a fast navigation shove", nav - previousNav < 0.025f)
+            assertTrue("Elastic accent builds and releases gently", kotlin.math.abs(accent - previousAccent) < 0.045f)
             previousNav = nav
             previousAccent = accent
         }
@@ -469,7 +478,7 @@ class PlayerOpeningMotionTest {
                 assertTrue(frame.right >= previous.right - 0.001f)
                 assertTrue(frame.bottom >= previous.bottom - 0.001f)
                 val miniLead = (frame.top - top) - playerMiniTravelPx(p, top, 1f, 0f)
-                assertTrue(miniLead in -0.001f..7.001f)
+                assertTrue(miniLead in -0.001f..5.001f)
                 if (p <= 0.025f || p >= PLAYER_MINI_FADE_END) assertEquals(0f, miniLead, 0.001f)
                 previous = frame
             }
@@ -564,9 +573,9 @@ class PlayerOpeningMotionTest {
         val raised = rawBounds("mini-art")
         assertTrue(raised.top < source.top)
         assertEquals(source.width, raised.width, 2f)
-        advance(700)
+        advance(850)
         compose.runOnIdle { state.collapseSoft() }
-        advance(700)
+        advance(850)
         assertEquals(source, rawBounds("mini-art"))
     }
 
@@ -581,7 +590,7 @@ class PlayerOpeningMotionTest {
             assertTrue(state.visualProgress >= before)
             assertEquals(1, contentMounts); assertEquals(0, contentDisposals)
         }
-        advance(700)
+        advance(850)
         val bitmap = capture("surface-artwork-ready")
         val poster = rawBounds("poster")
         assertEquals(AndroidColor.rgb(255, 191, 76), bitmap.getPixel(
@@ -601,7 +610,7 @@ class PlayerOpeningMotionTest {
 
     @Test fun closingRetreatsAsOnePageAndLeavesNoArtworkOrInputLayerBelowMini() {
         mount(); val source = rawBounds("mini-art")
-        compose.runOnIdle { state.expandSoft() }; advance(700)
+        compose.runOnIdle { state.expandSoft() }; advance(850)
         compose.runOnIdle { state.collapseSoft() }
         var sampled = false
         repeat(45) {
@@ -627,7 +636,7 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun settledPlayerIsExactlyIdentityAndAcceptsItsNativeControls() {
-        mount(); compose.runOnIdle { state.expandSoft() }; advance(700)
+        mount(); compose.runOnIdle { state.expandSoft() }; advance(850)
         val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
         assertEquals(0f, a.x, 1f); assertEquals(0f, a.y, 1f)
         assertEquals(with(compose.density) { 360.dp.toPx() }, b.x, 1f)
@@ -640,7 +649,7 @@ class PlayerOpeningMotionTest {
         mount(); sampleAt(0.35f)
         compose.onNodeWithTag("scene").performTouchInput { click(Offset(center.x, height - 24f)) }
         compose.runOnIdle { assertEquals(0, controlClicks) }
-        advance(700)
+        advance(850)
         compose.onNodeWithTag("control").performTouchInput { click(center) }
         compose.runOnIdle { assertEquals(1, controlClicks) }
     }
@@ -673,7 +682,7 @@ class PlayerOpeningMotionTest {
         advance(80);compose.runOnIdle {state.expandSoft()}
         advance(550)
         compose.runOnIdle {assertTrue(state.isExpanded);assertFalse(state.isAnimationRunning)}
-        compose.runOnIdle {state.collapseSoft()};advance(650)
+        compose.runOnIdle {state.collapseSoft()};advance(850)
         compose.runOnIdle {assertTrue(state.isCollapsed);assertFalse(state.isAnimationRunning)}
     }
 
@@ -721,19 +730,19 @@ class PlayerOpeningMotionTest {
         val closing=compose.runOnIdle {state.value.value}
         assertTrue("the latest closing intent must turn the same page: $before -> $closing",closing<before)
         compose.runOnIdle {state.expandSoft();assertEquals(closing,state.value.value,0.01f)}
-        advance(700)
+        advance(850)
         compose.runOnIdle {assertTrue(state.isExpanded);assertEquals(1,contentMounts)}
     }
 
     @Test fun reopeningAtTheSourceDoesNotRebuildTheVisiblePageOrClickTheApp() {
-        mount();compose.runOnIdle {state.expandSoft()};advance(700)
+        mount();compose.runOnIdle {state.expandSoft()};advance(850)
         compose.runOnIdle {state.collapseSoft()}
         var frames=0
         while(compose.runOnIdle {state.visualProgress}>PlayerSceneTouchThreshold && frames++<60) advance(16)
         compose.runOnIdle {assertTrue(state.compactForegroundAcceptsInput);assertEquals(0,contentDisposals)}
         capture("source-handoff").recycle()
         compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
-        advance(700)
+        advance(850)
         compose.runOnIdle {assertTrue(state.isExpanded);assertEquals(1,contentMounts);assertEquals(0,navigationClicks)}
     }
 
@@ -742,14 +751,14 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle {state.expandSoft()};advance(32)
         compose.onNodeWithTag("scene").performTouchInput {click(Offset(center.x,height-20f))}
         compose.runOnIdle {assertEquals(0,navigationClicks)}
-        advance(700);capture("expanded").recycle()
+        advance(850);capture("expanded").recycle()
         compose.onNodeWithTag("control").performTouchInput{click(center)}
         compose.runOnIdle {assertEquals(1,controlClicks)}
     }
 
     @Test fun coveredMiniAndAppDrawingStopAfterTheWindowBecomesOpaque() {
         mount();compose.runOnIdle {state.expandSoft()};advance(32)
-        capture("mini-active").recycle();advance(700)
+        capture("mini-active").recycle();advance(850)
         val source=miniDraws;val app=sceneDraws;val compositions=sceneCompositions
         assertTrue(source>0)
         advance(1500)
@@ -764,7 +773,7 @@ class PlayerOpeningMotionTest {
             assertEquals(1,contentMounts);assertEquals(0,contentDisposals)
             assertTrue(state.compactSurfaceVisible)
         }
-        advance(700)
+        advance(850)
         compose.runOnIdle {assertEquals(0,contentDisposals);assertFalse(state.compactSurfaceVisible)}
         compose.runOnIdle {state.collapseSoft()};advance(64)
         compose.runOnIdle {
@@ -772,7 +781,7 @@ class PlayerOpeningMotionTest {
             assertEquals(1,contentMounts);assertEquals(0,contentDisposals)
             assertTrue(state.compactSurfaceVisible)
         }
-        advance(700)
+        advance(850)
         compose.runOnIdle {
             assertEquals(0,miniDisposals);assertEquals(1,contentDisposals)
             assertTrue(state.isCollapsed)
@@ -788,19 +797,19 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun backClosesNestedSurfaceThenPlayerAndConsumesRepeatsDuringClosing() {
-        mount();compose.runOnIdle {state.expandSoft()};advance(700)
+        mount();compose.runOnIdle {state.expandSoft()};advance(850)
         compose.runOnIdle {nestedSurface=true;compose.activity.onBackPressedDispatcher.onBackPressed()}
         compose.runOnIdle {assertFalse(nestedSurface);assertTrue(state.isExpanded)}
         compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()};advance(64)
         compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed();assertEquals(0,backgroundBacks)}
-        advance(700)
+        advance(850)
         compose.runOnIdle {assertTrue(state.isCollapsed);compose.activity.onBackPressedDispatcher.onBackPressed();assertEquals(1,backgroundBacks)}
     }
 
     @Test fun routeRecompositionDoesNotStealPlayerBackOwnership() {
         mount();compose.runOnIdle {routeEpoch.value++};advance(32)
-        compose.runOnIdle {state.expandSoft()};advance(700)
-        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()};advance(700)
+        compose.runOnIdle {state.expandSoft()};advance(850)
+        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()};advance(850)
         compose.runOnIdle {assertTrue(state.isCollapsed);assertEquals(0,backgroundBacks)}
     }
 
