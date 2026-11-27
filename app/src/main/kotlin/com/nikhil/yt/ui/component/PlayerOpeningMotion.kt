@@ -104,8 +104,22 @@ internal fun playerSceneShouldInterceptTouch(
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
 internal const val PLAYER_MINI_FADE_END = 0.76f
-// Navigation clears the dock while the destination is still nearly transparent.
-internal fun playerNavigationTuck(progress: Float): Float = playerSilkPhase(progress, 0.008f, 0.27f)
+// First the lower edge reaches navigation; then both share the same displacement.
+// The contact phase finishes while the full player is still mostly transparent.
+internal const val PLAYER_NAV_CONTACT = 0.065f
+internal const val PLAYER_NAV_HIDDEN = 0.29f
+internal fun playerNavigationTuck(progress: Float): Float =
+    playerSilkPhase(progress, PLAYER_NAV_CONTACT, PLAYER_NAV_HIDDEN)
+
+/** Lower edge follows the physical nav boundary, not a second independent slide. */
+internal fun playerLowerEdgeTravelPx(progress: Float, available: Float, navigationHeight: Float): Float {
+    if (!available.isFinite() || available <= 0f) return 0f
+    val nav = if (navigationHeight.isFinite()) navigationHeight.coerceIn(0f, available) else 0f
+    if (nav <= 0f) return available * playerFrameGeometryProgress(progress)
+    val gap = available - nav
+    return gap * playerSilkPhase(progress, 0.008f, PLAYER_NAV_CONTACT) +
+        nav * playerNavigationTuck(progress)
+}
 internal fun playerMiniDrawAlpha(progress: Float): Float =
     1f - playerSilkPhase(progress, 0.42f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float =
@@ -231,6 +245,7 @@ internal fun playerPresentationBounds(
     miniHeight: Float,
     miniInset: Float,
     miniRightInset: Float = miniInset,
+    navigationHeight: Float = 0f,
 ): Rect {
     val p = playerFrameGeometryProgress(progress)
     val leftInset = miniInset.coerceIn(0f, width * 0.5f)
@@ -241,7 +256,7 @@ internal fun playerPresentationBounds(
         left = leftInset * (1f - p),
         top = sourceTop * (1f - p),
         right = width - rightInset * (1f - p),
-        bottom = sourceBottom + (height - sourceBottom) * p,
+        bottom = sourceBottom + playerLowerEdgeTravelPx(progress, height - sourceBottom, navigationHeight),
     )
 }
 
