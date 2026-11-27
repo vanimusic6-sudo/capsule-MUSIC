@@ -22,6 +22,7 @@ fun MiniPlayer(
     foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
     glassBackdrop: Backdrop? = null,
+    keepWarm: Boolean = false,
 ) {
     CapsuleMiniPlayer(
         position = position,
@@ -33,5 +34,6 @@ fun MiniPlayer(
         foregroundAlpha = foregroundAlpha,
         foregroundInteractive = foregroundInteractive,
         glassBackdrop = glassBackdrop,
+        keepWarm = keepWarm,
     )
 }
