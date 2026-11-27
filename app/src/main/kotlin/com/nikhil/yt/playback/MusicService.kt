@@ -2088,14 +2088,17 @@ class MusicService :
                             // audio-route event, not proof of network starvation.
                             Timber.tag("CapsuleCodec").w(
                                 "music-underrun id=%s bufferMs=%s timeSinceFeedMs=%s " +
-                                    "bufferedAheadMs=%d loading=%s state=%d playing=%s " +
-                                    "playWhenReady=%s audioFocus=%s routeConnected=%s",
+                                    "bufferedAheadMs=%d currentItemAheadMs=%d positionMs=%d loading=%s state=%d playing=%s " +
+                                    "playWhenReady=%s audioFocus=%s routeConnected=%s studio=%s interactive=%s",
                                 currentMediaItem?.mediaId ?: "unknown",
                                 bufferSizeMs, elapsedSinceLastFeedMs,
                                 totalBufferedDuration,
+                                AudioBufferStallPolicy.currentItemHeadroomMs(bufferedPosition, currentPosition),
+                                currentPosition,
                                 isLoading, playbackState, isPlaying,
                                 playWhenReady, playbackFocusController.hasFocus,
                                 connectivityManager.activeNetwork != null,
+                                studioSound.enabled, studioInteractive,
                             )
                         }
                     })

@@ -21,7 +21,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
  *
  * Media3 1.9.2 clamps the 1x PCM AudioTrack buffer between 250 ms and 750 ms.
  * A real field underrun showed that 750 ms output buffer being starved for
- * 1214 ms. We intentionally set the 1x PCM min/max to 1.5 s and leave the
+ * 1214 ms. We intentionally set the 1x MUSIC PCM min/max to 2 s for scheduling headroom and leave the
  * PCM multiplier, compressed passthrough/offload buffers, Media3 source
  * buffering, CDN transport and YouTube request pacing at their defaults.
  */
@@ -60,7 +60,7 @@ internal object CapsuleOpusCodecSelector : MediaCodecSelector {
     }
 }
 
-internal const val CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000
+internal const val CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 2_000_000
 /** One short-buffer attempt per studio visit; restore immediately after an underrun.
  * No flush, seek or AudioTrack recreation. Already queued audio drains normally. */
 private class CapsuleStudioInteractiveBuffer {
@@ -70,6 +70,7 @@ private class CapsuleStudioInteractiveBuffer {
     private var attempted = false
     private var shortened = false
     private var baselineUnderruns = 0
+    private var nextRestoreAtMs = 0L
 
     fun attach(output: AudioTrack, config: AudioSink.AudioTrackConfig) {
         track = if (Build.VERSION.SDK_INT >= 24 && !config.offload && !config.tunneling &&
@@ -78,10 +79,13 @@ private class CapsuleStudioInteractiveBuffer {
         visiting = false
         attempted = false
         shortened = false
+        nextRestoreAtMs = 0L
     }
 
     fun update(interactive: Boolean) {
         if (Build.VERSION.SDK_INT < 24) return
+        // No AudioTrack state queries on ordinary PCM blocks with no pending change.
+        if (!interactive && !visiting && !shortened) return
         val output = track ?: return
         if (output.state != AudioTrack.STATE_INITIALIZED || originalFrames <= 0) return
         if (visiting != interactive) {
@@ -91,8 +95,16 @@ private class CapsuleStudioInteractiveBuffer {
         if (shortened && (!interactive || output.underrunCount > baselineUnderruns)) {
             // Stay on the conservative queue for the rest of this visit.
             attempted = interactive
+            // If a device clamps a requested size, avoid repeated native resize
+            // calls on every decoder buffer. Retry without blocking the renderer.
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now < nextRestoreAtMs) return
+            nextRestoreAtMs = now + 250L
             val restored = runCatching { output.setBufferSizeInFrames(originalFrames) }.getOrNull()
-            if (restored != null && restored >= originalFrames) shortened = false
+            if (restored != null && restored >= originalFrames) {
+                shortened = false
+                nextRestoreAtMs = 0L
+            }
             return
         }
         if (!interactive || attempted || shortened) return
