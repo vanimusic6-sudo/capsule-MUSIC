@@ -23,3 +23,8 @@ Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static aud
 - SABR session cancellation is synchronized with call publication, obsolete failures cannot poison buffers after cancellation, 429 reaches the existing video cooldown, and no-media headers no longer acknowledge segments. Stop obsolete SABR producers before video recovery.
 - Audio URL TTL is monotonic (wall-clock changes cannot extend a cached URL lifetime). Signed URL expiry, range consistency and account/route context remain distinct.
 - Added transport regression cases for bounded reads and header-only responses. Existing media-core CI includes SABR tests and audio URL-cache tests. These changes still require successful CI and device tests.
+
+## CI feedback and audio liveness
+- Previous debug APK and InnerTube tests succeeded, but the app unit-test compilation failed because a new test used arithmetic directly on a nullable fake buffered position. Corrected the fixture and preserved the test's actual continuous-progress scenario.
+- Audio stall detection also has a 30 s ceiling for a continuously starved buffer even if each sample meets the growth threshold. It never treats adequate current-item headroom or offline state as a CDN failure.
+- Release remains blocked until the new commit's compilation, regression suites, optimized APK and long on-device network tests are verified. No dependency or license audit is claimed complete.

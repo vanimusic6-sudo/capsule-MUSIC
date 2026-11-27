@@ -1495,6 +1495,7 @@ class MusicService :
             AudioBufferStallPolicy.INITIAL_WAIT_MS
         }
         audioBufferStallWatchJob = scope.launch {
+            val bufferingStartedAtMs = android.os.SystemClock.elapsedRealtime()
             delay(firstWaitMs)
             while (true) {
                 // Measure whether the source actually gained a playable cushion, not whether a
@@ -1517,6 +1518,7 @@ class MusicService :
                         isVideo = isCurrentCapsuleVideoItem(),
                         bufferedAheadMs = bufferedAheadMs,
                         bufferedGrowthMs = growthMs,
+                        continuousBufferingMs = android.os.SystemClock.elapsedRealtime() - bufferingStartedAtMs,
                     )
                 ) {
                     if (player.playbackState != Player.STATE_BUFFERING ||

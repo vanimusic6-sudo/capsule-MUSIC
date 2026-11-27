@@ -14,6 +14,9 @@ internal object AudioBufferStallPolicy {
     const val REBUFFER_WAIT_MS = 6_000L
     const val SAMPLE_WINDOW_MS = 2_000L
     const val MAX_BUFFER_AHEAD_MS = 8_000L
+    // A source may make measurable progress in each sample and still never
+    // supply enough usable media to leave BUFFERING. Bound that episode too.
+    const val MAX_STARVED_BUFFERING_MS = 30_000L
     // Require meaningful progress, but tolerate a temporarily slow mobile CDN.
     const val MIN_BUFFER_GROWTH_MS = 1_200L
     const val MAX_AUTOMATIC_REFRESHES_PER_TRACK = 2
@@ -68,8 +71,10 @@ internal object AudioBufferStallPolicy {
         isVideo: Boolean,
         bufferedAheadMs: Long,
         bufferedGrowthMs: Long,
+        continuousBufferingMs: Long = 0L,
     ): Boolean =
         buffering && playWhenReady && connected && !blocked && !isVideo &&
             bufferedAheadMs >= 0L && bufferedAheadMs < MAX_BUFFER_AHEAD_MS &&
-            bufferedGrowthMs < MIN_BUFFER_GROWTH_MS
+            (bufferedGrowthMs < MIN_BUFFER_GROWTH_MS ||
+                continuousBufferingMs >= MAX_STARVED_BUFFERING_MS)
 }

@@ -58,6 +58,18 @@ class AudioBufferStallPolicyTest {
         assertTrue(needsRefresh(ahead = 900L, growth = 1_100L))
     }
 
+    @Test fun prolongedStarvationCannotAvoidRecoveryByDripFeeding() {
+        val p = AudioBufferStallPolicy
+        assertFalse(p.shouldRefresh(true, true, true, false, false, 3_000L, 2_000L,
+            continuousBufferingMs = p.MAX_STARVED_BUFFERING_MS - 1))
+        assertTrue(p.shouldRefresh(true, true, true, false, false, 3_000L, 2_000L,
+            continuousBufferingMs = p.MAX_STARVED_BUFFERING_MS))
+        assertFalse(p.shouldRefresh(true, true, true, false, false, 9_000L, 0L,
+            continuousBufferingMs = p.MAX_STARVED_BUFFERING_MS))
+        assertFalse(p.shouldRefresh(true, true, false, false, false, 0L, 0L,
+            continuousBufferingMs = p.MAX_STARVED_BUFFERING_MS))
+    }
+
     @Test fun progressOrAdequateBufferPreventsRefresh() {
         assertFalse(needsRefresh(ahead = 8_000L))
         assertFalse(needsRefresh(ahead = 0L, growth = 1_500L))

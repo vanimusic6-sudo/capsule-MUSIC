@@ -550,12 +550,14 @@ class CapsuleVideoSessionTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(261); runCurrent()
         f.clip.state = Player.STATE_BUFFERING; f.clip.playing = false; f.clip.event()
+        var bufferedMs = f.clip.player.bufferedPosition
         repeat(59) {
-            f.clip.buffered += 1L
+            bufferedMs += 1L
+            f.clip.buffered = bufferedMs
             advanceTimeBy(500); runCurrent()
             assertTrue(f.failures.isEmpty())
         }
-        f.clip.buffered += 1L
+        f.clip.buffered = bufferedMs + 1L
         advanceTimeBy(500); runCurrent()
         assertEquals(1, f.failures.size)
         assertTrue(f.failures.single() is java.net.SocketTimeoutException)
