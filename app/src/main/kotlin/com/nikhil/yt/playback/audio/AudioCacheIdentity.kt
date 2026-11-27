@@ -11,8 +11,7 @@ internal object AudioCacheIdentity {
     private const val FORMAT_KEY = "custom_capsule_audio_format"
 
     fun key(mediaId: String, playback: CapsuleAudioEngine.PlaybackData): String =
-        "$PREFIX$mediaId:${playback.format.itag}:${playback.format.contentLength ?: -1}" +
-            if (playback.streamClient == PIPE_AUDIO_CLIENT) ":pipepipe" else ""
+        "$PREFIX$mediaId:${playback.format.itag}:${playback.format.contentLength ?: -1}"
 
     fun mediaId(key: String): String =
         if (key.startsWith(PREFIX)) key.removePrefix(PREFIX).substringBefore(':') else key

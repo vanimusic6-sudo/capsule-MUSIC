@@ -16,12 +16,12 @@ import java.util.concurrent.TimeUnit
 /** A signed googlevideo link, with the query shapes the real ones carry. */
 private const val SIGNED =
     "https://rr1---sn-ajixh5-55.googlevideo.com/videoplayback" +
-        "?expire=1790000000&ei=abc&ip=203.0.113.7&id=o-AbC_dEf&itag=251&source=youtube" +
+        "?expire=4102444800&ei=abc&ip=203.0.113.7&id=o-AbC_dEf&itag=251&source=youtube" +
         "&mime=audio%2Fwebm&sig=AJfQ%2BdSwRQIgX%3D%3D&pot=MnQ_pO.token-1&c=WEB_REMIX&n=xYz-1"
 
 private const val REDIRECTED =
     "https://rr1---sn-ajixh5-55.googlevideo.com/videoplayback" +
-        "?expire=1790000000&ei=abc&ip=203.0.113.7&id=o-AbC_dEf&itag=251&source=youtube" +
+        "?expire=4102444800&ei=abc&ip=203.0.113.7&id=o-AbC_dEf&itag=251&source=youtube" +
         "&mime=audio%2Fwebm&sig=AJfQ%2BdSwRQIgX%3D%3D&pot=MnQ_pO.token-1&c=WEB_REMIX&n=xYz-1" +
         "&redirect_counter=1&cm2rm=sn-5hnekn7s&rrc=80"
 
@@ -113,37 +113,22 @@ class AudioCdnRedirectFidelityTest {
         }
     }
 
-    @Test fun `refused shortcut retains same link ID and identifies fallback to original`() {
+    @Test fun `refused shortcut reports one request and no retry`() {
         GlobalLog.setEnabled(true)
         try {
             val targets = AudioCdnRedirectTargets()
             val interceptor = AudioCdnRedirectInterceptor(targets)
-            interceptor.intercept(
-                RecordingChain(signedRequest(), listOf(found(REDIRECTED), partial())),
-            ).close()
-
-            val retry = RecordingChain(
-                signedRequest(),
-                listOf(
-                    { request ->
-                        Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
-                            .code(403).message("Forbidden").body("".toResponseBody()).build()
-                    },
-                    partial(),
-                ),
-            )
-            interceptor.intercept(retry).close()
-            assertEquals(2, retry.sent.size)
-            val shortcut = requireNotNull(retry.sent[0].tag(AudioCdnRequestTrace::class.java))
-            val fallback = requireNotNull(retry.sent[1].tag(AudioCdnRequestTrace::class.java))
-            assertEquals(shortcut.flowId, fallback.flowId)
-            assertEquals(shortcut.linkRef, fallback.linkRef)
+            interceptor.intercept(RecordingChain(signedRequest(), listOf(found(REDIRECTED), partial()))).close()
+            val retry = RecordingChain(signedRequest(), listOf({ request ->
+                Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+                    .code(403).message("Forbidden").body("".toResponseBody()).build()
+            }))
+            interceptor.intercept(retry).use { assertEquals(403, it.code) }
+            assertEquals(1, retry.sent.size)
+            val shortcut = requireNotNull(retry.sent.single().tag(AudioCdnRequestTrace::class.java))
             assertEquals("shortcut", shortcut.stage)
-            assertEquals("original-after-shortcut", fallback.stage)
             assertEquals(1, shortcut.hop)
-            assertEquals(2, fallback.hop)
-            assertEquals(signedRequest().url, retry.sent[1].url)
-            assertEquals(audioCdnHeaderRef(retry.sent[0]), audioCdnHeaderRef(retry.sent[1]))
+            assertEquals(REDIRECTED, retry.sent.single().url.toString())
         } finally {
             GlobalLog.setEnabled(false)
         }

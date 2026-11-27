@@ -5514,8 +5514,6 @@ class MusicService :
                 source = source,
                 streamClient = playback.streamClient,
                 rangeChunkSizeBytes = playback.rangeChunkSizeBytes,
-                routeSession = playback.routeSession,
-                itag = playback.format.itag,
             )
         }
         return dataSpec.buildUpon()

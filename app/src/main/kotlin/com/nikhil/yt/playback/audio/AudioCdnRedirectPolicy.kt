@@ -22,11 +22,6 @@ private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
  */
 internal const val AUDIO_CDN_MAX_EXTRA_REQUESTS = 4
 
-/** One reissue is reserved for a destination already observed timing out on this network.
- * Healthy server-directed redirects are followed immediately; declining every first 302
- * added 0.8–1.0s and a new socket in the 2026-11-02 device capture. */
-internal const val AUDIO_CDN_MAX_REISSUES = 0
-
 internal const val AUDIO_CDN_INITIAL_HEADERS_TIMEOUT_SECONDS = 6
 
 /** Reject attacker-controlled Location URLs before copying a signed request's
@@ -118,9 +113,7 @@ internal class AudioCdnRedirectInterceptor(
         } else null
         val taggedOrigin = origin.newBuilder().tag(AudioCdnRequestTrace::class.java, trace).build()
         var request = if (shortcut != null) taggedOrigin.newBuilder().url(shortcut).build() else taggedOrigin
-        var usingShortcut = shortcut != null
         var extraRequests = 0
-        var reissues = 0
         var stage = if (shortcut != null) "shortcut" else "original"
         var hop = 0
 
@@ -198,38 +191,11 @@ internal class AudioCdnRedirectInterceptor(
                 response.body?.source()?.timeout()?.timeout(chain.readTimeoutMillis().toLong(), TimeUnit.MILLISECONDS)
             }
 
-            /*
-             * A remembered link that is refused is forgotten at once and the original asked
-             * instead. Otherwise one stale target could turn a single refusal into every slice
-             * of the track being refused, which is a far worse failure than the redirect this
-             * is saving.
-             */
-            // A 429 on a shortcut MUST reach CapsuleAudioRequestInterceptor and the global
-            // rate-limit breaker unchanged. All other HTTP errors retain the existing fallback
-            // to the issuing URL, including a transient 5xx or a stale shortcut's 404.
-            // Swallowing 429 behind that fallback concealed explicit back-off and sent another GET.
-            if (response.code in setOf(401, 403, 410)) {
-                targets.forget(origin.url)
+            // HTTP errors are terminal for this open. Recovery belongs to
+            // the service/downloader, not a hidden request inside a redirect.
+            if (!response.isSuccessful && response.code !in REDIRECT_CODES) {
+                if (response.code != 429) targets.forget(origin.url)
                 return response
-            }
-            if (usingShortcut && isCdnRefusalStatus(response.code) && response.code != 429) {
-                response.close()
-                targets.forget(origin.url)
-                if (GlobalLog.isEnabled) {
-                    Timber.tag("AudioCDN").w(
-                        "cdn-shortcut-refused flow=%d hop=%d linkRef=%s host=%s code=%d; asking the original link again",
-                        trace?.flowId ?: -1L,
-                        hop,
-                        trace?.linkRef ?: "unknown",
-                        request.url.host,
-                        response.code,
-                    )
-                }
-                usingShortcut = false
-                extraRequests += 1
-                request = taggedOrigin
-                stage = "original-after-shortcut"
-                continue
             }
 
             val target = try {
@@ -251,10 +217,6 @@ internal class AudioCdnRedirectInterceptor(
                 throw IOException("Too many redirects for ${origin.url.host}")
             }
 
-            val decline =
-                reissues < AUDIO_CDN_MAX_REISSUES &&
-                    health?.isUnresponsiveHost(target.host) == true &&
-                    isCrossGroupGooglevideoRedirect(request.url.host, target.host)
             if (GlobalLog.isEnabled) {
                 Timber.tag("AudioCDN").i(
                     "cdn-redirect-decision flow=%d hop=%d linkRef=%s fromRef=%s toRef=%s " +
@@ -265,66 +227,22 @@ internal class AudioCdnRedirectInterceptor(
                     AudioCdnLinkIdentity.ref(request.url.toString()),
                     AudioCdnLinkIdentity.ref(target.toString()),
                     response.code,
-                    if (decline) "decline-once" else "follow",
+                    "follow",
                     googlevideoServerGroup(request.url.host) ?: "unknown",
                     googlevideoServerGroup(target.host) ?: "unknown",
                 )
             }
             response.close()
             extraRequests += 1
-            // Once the chain has moved off the remembered link, a later refusal belongs to
-            // wherever it has got to, not to the shortcut, and must not un-remember it twice.
-            usingShortcut = false
-
-            request =
-                if (decline) {
-                    reissues += 1
-                    stage = "original-after-decline"
-                    if (GlobalLog.isEnabled) {
-                        Timber.tag("AudioCDN").w(
-                            "cdn-redirect-declined from=%s to=%s attempt=%d; asking the issuing host again",
-                            googlevideoServerGroup(request.url.host) ?: "unknown",
-                            googlevideoServerGroup(target.host) ?: "unknown",
-                            reissues,
-                        )
-                    }
-                    taggedOrigin
-                } else {
-                    stage = "redirect-followed"
-                    /*
-                     * A followed redirect is reported too, and at the same level as a declined one.
-                     * A refusal that arrives after one of these came from a machine no other line
-                     * in the capture names, and a capture that cannot say which server refused
-                     * cannot say whether this policy is complete.
-                     */
-                    if (GlobalLog.isEnabled) {
-                        /*
-                         * A redirect inside the group is the ordinary case — ten a session, more
-                         * than half of all redirect events — and at warning it buried the three
-                         * lines a capture is actually read for. Leaving the group is still a
-                         * warning, because that is the one this policy exists to have an opinion
-                         * about.
-                         */
-                        val sameGroup =
-                            !isCrossGroupGooglevideoRedirect(request.url.host, target.host)
-                        if (sameGroup) {
-                            Timber.tag("AudioCDN").d(
-                                "cdn-redirect-followed from=%s to=%s sameGroup=%s",
-                                request.url.host,
-                                target.host,
-                                true,
-                            )
-                        } else {
-                            Timber.tag("AudioCDN").w(
-                                "cdn-redirect-followed from=%s to=%s sameGroup=%s",
-                                request.url.host,
-                                target.host,
-                                false,
-                            )
-                        }
-                    }
-                    request.newBuilder().url(target).build()
-                }
+            stage = "redirect-followed"
+            // Follow the server's validated target, stripping authorization
+            // headers from a cross-origin redirect. Never rewrite its query.
+            val redirected = request.newBuilder().url(target)
+            if (request.url.host != target.host) {
+                redirected.removeHeader("Authorization").removeHeader("Cookie")
+                    .removeHeader("X-Goog-AuthUser").removeHeader("X-Goog-PageId")
+            }
+            request = redirected.build()
         }
     }
 

@@ -179,7 +179,8 @@ constructor(
         // its cancellation; no resolver mutex is held across the wait.
         awaitDownloadCooldownWindow(
             nowMs = System::currentTimeMillis,
-            globalRemainingMs = CapsulePlaybackSafety::remainingBlockMs,
+            globalRemainingMs = { maxOf(CapsulePlaybackSafety.remainingBlockMs(),
+                com.nikhil.yt.playback.audio.AudioAccessGate.discipline.globalRemainingMs()) },
             downloadRemainingMs = CapsuleAudioEngine::downloadCooldownRemainingMs,
             localCooldownUntilMs = { cooldownUntilMs },
             sliceMs = DOWNLOAD_WAIT_SLICE_MS,

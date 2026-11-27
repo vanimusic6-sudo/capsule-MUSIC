@@ -29,8 +29,8 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
         }
         AudioAccessGate.check()
         val response = chain.proceed(request)
-        if (response.code == 403) {
-            AudioAccessGate.discipline.recordWireRefusal()
+        if (response.code == 403 || response.code == 401) {
+            if (response.code == 403) AudioAccessGate.discipline.recordWireRefusal()
             // Preserve the HTTP response for Media3; metadata callers receive a
             // typed terminal decision before a library can obscure the reason.
             if (host != "googlevideo.com" && !host.endsWith(".googlevideo.com")) {
@@ -48,10 +48,16 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
             } else YouTubeFailureKind.NONE
 
         when (signal) {
-            YouTubeFailureKind.RATE_LIMITED -> CapsulePlaybackSafety.markHttpStatusFailure(429)
+            YouTubeFailureKind.RATE_LIMITED -> {
+                AudioAccessGate.discipline.recordRateLimit(response.header("Retry-After"))
+                CapsulePlaybackSafety.markHttpStatusFailure(429)
+            }
             // Preserve the challenge even if InnerTubeX later summarizes it as NO_PLAYABLE_STREAM.
             // The serialized resolver knows which profile caused it and owns safe escalation.
-            YouTubeFailureKind.BOT_CHECK -> CapsulePlaybackSafety.noteWireBotCheck()
+            YouTubeFailureKind.BOT_CHECK -> {
+                AudioAccessGate.discipline.recordChallenge()
+                CapsulePlaybackSafety.noteWireBotCheck()
+            }
             else -> Unit
         }
         // HTTP 429 has already opened the global gate. Bot-check escalation is profile-aware.

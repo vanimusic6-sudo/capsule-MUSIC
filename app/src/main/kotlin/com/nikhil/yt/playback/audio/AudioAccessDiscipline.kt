@@ -55,6 +55,23 @@ internal class AudioAccessDiscipline(
         refusals.clear()
     }
 
+    /** RFC Retry-After supports delta seconds and an HTTP date. Keep the
+     * existing ten-minute minimum; never shorten an explicit longer delay. */
+    @Synchronized fun recordRateLimit(retryAfter: String?, wallMs: Long = System.currentTimeMillis()) {
+        val delayMs = retryAfter?.trim()?.let { header ->
+            header.toLongOrNull()?.coerceIn(0L, Long.MAX_VALUE / 1000L)?.times(1000L)
+                ?: runCatching {
+                    java.time.ZonedDateTime.parse(header, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toInstant().toEpochMilli().let { (it - wallMs).coerceAtLeast(0L) }
+                }.getOrNull()
+        } ?: 0L
+        val now = nowMs()
+        val duration = maxOf(600_000L, delayMs)
+        val until = if (now > Long.MAX_VALUE - duration) Long.MAX_VALUE else now + duration
+        globalUntil = maxOf(globalUntil, until)
+        refusals.clear()
+    }
+
     @Synchronized fun globalRemainingMs(): Long = (globalUntil - nowMs()).coerceAtLeast(0L)
 
     @Synchronized fun stopFor(id: String? = null): AudioAccessStopException? {

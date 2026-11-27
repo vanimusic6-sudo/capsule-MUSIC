@@ -80,7 +80,6 @@ internal object CapsulePlaybackSafety {
     fun noteWireBotCheck() {
         wireBotGeneration.incrementAndGet()
         optionalQuiet.observeBotChallenge()
-        AudioAccessGate.discipline.recordChallenge()
     }
 
     fun wireBotSignalGeneration(): Long = wireBotGeneration.get()

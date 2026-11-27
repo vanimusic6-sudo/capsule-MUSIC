@@ -229,7 +229,6 @@ object CapsuleInnerTubeXPlayer {
          */
         val rangeChunkSizeBytes: Long,
         val sabrBootstrap: SabrBootstrap? = null,
-        val routeSession: Any? = null,
     )
 
     suspend fun prewarm(prewarmWebPoToken: Boolean = false) {
@@ -385,7 +384,7 @@ object CapsuleInnerTubeXPlayer {
                                 priorityProvider = effectivePriority,
                                 download = download,
                                 forceSabr = forceSabr && !download,
-                            ).toPlaybackData().copy(routeSession = extractionBundle.key)
+                            ).toPlaybackData()
                         }
                     }
                 }

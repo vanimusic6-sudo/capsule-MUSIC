@@ -153,13 +153,16 @@ internal class ResolvingAudioDownloader(
                         .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
                     val denied = status in setOf(401, 403, 410)
-                    if (status in setOf(401, 403) || failure.audioAccessStopOrNull() != null) {
-                        if (status in setOf(401, 403)) recover(playback, failure)
+                    if (status in setOf(401, 403)) {
+                        recover(playback, failure)
                         terminalRefusal = failure
                         resolved = null
                         expiresAtNs = 0L
                         throw failure
                     }
+                    // A temporary global cooldown is not a permanent bad file.
+                    // Admission waits on the next attempt; no requests during it.
+                    if (failure.audioAccessStopOrNull() != null) throw failure
                     if (recoveries >= MAX_RECOVERIES) {
                         if (denied) {
                             recover(playback, failure) // retire external resume cache as well
