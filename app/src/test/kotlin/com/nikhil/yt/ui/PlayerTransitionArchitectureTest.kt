@@ -102,7 +102,7 @@ class PlayerTransitionArchitectureTest {
         assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
     }
 
-    @Test fun playerUsesOneOpaqueSheetWithNativeContentAndStationaryDock() {
+    @Test fun playerUsesOneRoundedDestinationAndTheRealMovingMini() {
         val main = source("com/nikhil/yt/MainActivity.kt")
         val sheet = source("com/nikhil/yt/ui/component/BottomSheet.kt")
         val window = source("com/nikhil/yt/ui/component/PlayerWindow.kt")
@@ -110,18 +110,21 @@ class PlayerTransitionArchitectureTest {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertTrue(main.contains("classicPlayerPresentation = false"))
         assertTrue(sheet.contains("if (state.playerMotion) {"))
-        assertTrue(window.contains("translationY = playerSheetOffsetPx(p, size.height)"))
+        assertTrue(window.contains("playerPresentationBounds(p, size.width, size.height,"))
+        assertTrue(window.contains("playerMiniTravelPx(p, dockTop, density, state.frameVelocityFraction)"))
+        assertTrue(window.contains("alpha = playerMiniDrawAlpha(p)"))
+        assertTrue(window.contains("translationY = if (opacity > 0f) frame.top else size.height"))
         assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = backgroundContent)"))
         assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = content)"))
         assertFalse(window.contains("alpha = playerPresentationOpacity"))
         assertFalse(window.contains("scaleX ="))
         assertFalse(window.contains("scaleY ="))
-        assertFalse(window.contains("PlayerWindowShape("))
+        assertTrue(window.contains("PlayerWindowShape(Rect(frame.left, 0f, frame.right, frame.height), radius, 0f)"))
         assertFalse(window.contains("PlayerArtworkMotion("))
         assertFalse(window.contains("Brush.horizontalGradient"))
         assertFalse(mini.contains(".playerArtworkEndpoint("))
         assertTrue(player.contains("foregroundAlpha = { 1f }"))
-        assertFalse(main.contains("playerNavTuck"))
+        assertTrue(main.contains("playerNavigationTravelPx(p, distance, density,"))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
