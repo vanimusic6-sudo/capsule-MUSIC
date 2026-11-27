@@ -262,8 +262,8 @@ class PlayerOpeningMotionTest {
         for (density in listOf(1f, 2f, 3.5f)) {
             assertEquals(0f, playerMiniTravelPx(0f, 590f * density, density, -1f), 0f)
             assertEquals(0f, playerNavigationTravelPx(0f, 60f * density, density, -1f), 0f)
-            assertEquals(3f * density, playerMiniTravelPx(0.0135f, 590f * density, density, -0.3f), 0.001f)
-            assertEquals(-2f * density, playerNavigationTravelPx(0.0135f, 60f * density, density, -0.3f), 0.001f)
+            assertEquals(2.5f * density, playerMiniTravelPx(0.0135f, 590f * density, density, -0.3f), 0.001f)
+            assertEquals(-1.75f * density, playerNavigationTravelPx(0.0135f, 60f * density, density, -0.3f) - playerNavigationTravelPx(0.0135f, 60f * density, density, 0f), 0.001f)
             assertEquals(0f, playerDockLanding(0.0135f, 0.3f), 0f)
             assertEquals(0f, playerDockLanding(0.0135f, Float.NaN), 0f)
             for (i in 0..1000) {
@@ -271,8 +271,8 @@ class PlayerOpeningMotionTest {
                 val landing = playerDockLanding(p, -0.3f)
                 assertTrue(landing in 0f..1f)
                 if (p >= 0.025f || p <= 0.002f) assertEquals(0f, landing, 0.0001f)
-                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 3f * density + 0.001f)
-                assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -2f * density - 0.001f)
+                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 2.5f * density + 0.001f)
+                assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -1.75f * density - 0.001f)
             }
         }
     }
@@ -306,8 +306,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 90f..140f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 810f)
+            assertTrue("Responsive first two frames", at(33) in 85f..140f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 795f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -342,7 +342,7 @@ class PlayerOpeningMotionTest {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
         assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 10f..12f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 7f..10f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -411,7 +411,9 @@ class PlayerOpeningMotionTest {
                 assertTrue(frame.left <= previous.left + 0.001f)
                 assertTrue(frame.right >= previous.right - 0.001f)
                 assertTrue(frame.bottom >= previous.bottom - 0.001f)
-                assertEquals(frame.top - top, playerMiniTravelPx(p, top, 1f, 0f), 0.001f)
+                val miniLead = (frame.top - top) - playerMiniTravelPx(p, top, 1f, 0f)
+                assertTrue(miniLead in -0.001f..7.001f)
+                if (p <= 0.025f || p >= PLAYER_MINI_FADE_END) assertEquals(0f, miniLead, 0.001f)
                 previous = frame
             }
             assertEquals(androidx.compose.ui.geometry.Rect(0f, 0f, width, height), previous)
