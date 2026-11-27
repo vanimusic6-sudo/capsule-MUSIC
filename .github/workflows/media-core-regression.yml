@@ -13,7 +13,7 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
-      - 'app/src/test/kotlin/com/nikhil/yt/ui/player/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
       - 'innertube/src/main/kotlin/com/nikhil/yt/innertube/**'
       - 'innertube/src/test/kotlin/com/nikhil/yt/innertube/**'
       - 'gradle/libs.versions.toml'
@@ -84,6 +84,8 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
+          --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Static integrity and safe network boundaries
         run: python3 scripts/capsule_integrity_gate.py

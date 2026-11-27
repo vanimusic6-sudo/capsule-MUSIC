@@ -51,6 +51,9 @@ internal class PlaybackRecoveryCoordinator(
     private val preparePlayback: () -> Unit,
     private val healthyPlaybackDelayMs: Long = 5_000L,
     private val networkRetryProgressGraceMs: Long = 5_000L,
+    private val playbackPositionMsProvider: (() -> Long)? = null,
+    private val onHealthyStream: (String) -> Unit = {},
+    private val healthyStreamResetDelayMs: Long = 30_000L,
 ) {
     private val retryBudget = PlaybackRetryBudget()
     private val cdnRecoveryPlan = AudioCdnRecoveryPlan()
@@ -65,6 +68,7 @@ internal class PlaybackRecoveryCoordinator(
 
     private var networkRecoveryJob: Job? = null
     private var healthyResetJob: Job? = null
+    private var healthyResetSelection: Triple<String, Int, Long>? = null
 
     val waitingForNetworkConnection = MutableStateFlow(false)
 
@@ -248,17 +252,32 @@ internal class PlaybackRecoveryCoordinator(
     }
 
     private fun scheduleHealthyReset(mediaId: String) {
-        healthyResetJob?.cancel()
+        val selection = Triple(mediaId, currentIndexProvider(), positionGenerationProvider())
+        if (healthyResetSelection == selection) return
+        cancelHealthyReset()
+        healthyResetSelection = selection
+        val initialPosition = playbackPositionMsProvider?.invoke()
+        fun stillHealthy(): Boolean =
+            healthyPlaybackProvider(mediaId) && currentMediaIdProvider() == mediaId &&
+                currentIndexProvider() == selection.second &&
+                positionGenerationProvider() == selection.third &&
+                (initialPosition == null || (playbackPositionMsProvider?.invoke() ?: initialPosition) > initialPosition)
         healthyResetJob =
             scopeProvider().launch {
                 delay(healthyPlaybackDelayMs)
-                if (healthyPlaybackProvider(mediaId)) {
-                    failureGuard.onHealthyPlayback()
+                if (stillHealthy()) failureGuard.onHealthyPlayback()
+                // READY for a few seconds must not refill transport retries:
+                // a bad CDN can repeatedly deliver a tiny audible window.
+                delay((healthyStreamResetDelayMs - healthyPlaybackDelayMs).coerceAtLeast(0L))
+                if (stillHealthy()) {
                     resetRetry(mediaId)
+                    onHealthyStream(mediaId)
                     Timber.tag("PlaybackRecovery").i(
-                        "Playback failure circuit reset after healthy playback id=%s",
+                        "Stream recovery budget reset after sustained playback id=%s",
                         mediaId,
                     )
+                } else {
+                    healthyResetSelection = null
                 }
                 healthyResetJob = null
             }
@@ -267,6 +286,7 @@ internal class PlaybackRecoveryCoordinator(
     fun cancelHealthyReset() {
         healthyResetJob?.cancel()
         healthyResetJob = null
+        healthyResetSelection = null
     }
 
     fun resetFailureGuard() {

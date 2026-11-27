@@ -434,7 +434,10 @@ class CapsuleImmersiveContentTest {
         for (background in listOf(Color.Black, Color(0xFF706C65), Color(0xFF74C6ED), Color.Red)) {
             val ink = immersiveMetadataInk(background)
             assertEquals(Color.White, ink.title)
-            assertEquals(0.62f, ink.artist.alpha, 0.001f)
+            // Matte scene uses stronger translucent artist ink for readability.
+            // Compose's packed sRGB Color quantizes alpha to 8 bits.
+            val expectedAlpha = if (background.luminance() > 0.14f) 0.92f else 0.72f
+            assertEquals(expectedAlpha, ink.artist.alpha, 1f / 255f)
         }
     }
 

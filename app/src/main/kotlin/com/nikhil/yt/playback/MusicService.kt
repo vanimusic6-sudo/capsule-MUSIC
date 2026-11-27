@@ -1438,6 +1438,8 @@ class MusicService :
             pausePlayback = { pausePlaybackFor("network-recovery-exhausted") },
             preparePlayback = { player.prepare() },
             healthyPlaybackDelayMs = HEALTHY_PLAYBACK_RESET_MS,
+            playbackPositionMsProvider = { player.currentPosition },
+            onHealthyStream = { id -> audioBufferStallRefreshes.remove(id) },
         )
     }
     private var streamRetryJob: Job? = null
@@ -1529,7 +1531,12 @@ class MusicService :
                 }
                 if (playbackRecoveryCoordinator.waitingForNetworkConnection.value ||
                     streamRetryJob?.isActive == true
-                ) return@launch
+                ) {
+                    // A retry can finish without emitting another BUFFERING
+                    // event. Stay armed rather than abandon the current item.
+                    delay(AudioBufferStallPolicy.REBUFFER_WAIT_MS)
+                    continue
+                }
                 val attempts = audioBufferStallRefreshes[id] ?: 0
                 if (attempts >= AudioBufferStallPolicy.MAX_AUTOMATIC_REFRESHES_PER_TRACK) {
                     Timber.tag("PlaybackRecovery").w(

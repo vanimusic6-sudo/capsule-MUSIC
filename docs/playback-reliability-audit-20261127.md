@@ -28,3 +28,9 @@ Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static aud
 - Previous debug APK and InnerTube tests succeeded, but the app unit-test compilation failed because a new test used arithmetic directly on a nullable fake buffered position. Corrected the fixture and preserved the test's actual continuous-progress scenario.
 - Audio stall detection also has a 30 s ceiling for a continuously starved buffer even if each sample meets the growth threshold. It never treats adequate current-item headroom or offline state as a CDN failure.
 - Release remains blocked until the new commit's compilation, regression suites, optimized APK and long on-device network tests are verified. No dependency or license audit is claimed complete.
+
+## Third review — recovery budgets and CI
+- On d1c0b0f, debug APK compiled and VIDEO regression ran 867 tests: 865 passed, two UI source/opacity expectations were stale relative to the earlier matte/animation redesign. Updated tests to retain the visibility and playback conditions plus the newer motion gate, and verify the intentionally increased alpha without changing visual design.
+- Signed DEV and media-core failed resolving the published Kotlin 2.4.21 Gradle plugin. The same version compiled in the VIDEO and debug APK jobs; treat as likely repository/runner availability, not evidence to downgrade. New CI must confirm.
+- Stream retry counters and the separate audio-stall budget now reset only after 30 seconds of sustained READY/playing with actual position advance and unchanged selection. Queue failure circuit retains the 5-second healthy check. Duplicate READY events no longer restart the healthy timer; buffering/pausing cancels it. Stall watch remains armed when another recovery is in flight.
+- Added regression tests for stable playback, no movement and duplicate READY. Release remains unverified pending new CI and live tests.

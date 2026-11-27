@@ -4,6 +4,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -155,6 +158,41 @@ class PlaybackRecoveryCoordinatorTest {
 
         coordinator.cancelNetworkRecovery()
         assertFalse(coordinator.waitingForNetworkConnection.value)
+    }
+
+    @Test
+    fun streamBudgetRequiresSustainedActualProgressAndIgnoresDuplicateReadyEvents() = runTest {
+        var position = 100L
+        var resets = 0
+        val coordinator = PlaybackRecoveryCoordinator(
+            scopeProvider = { this },
+            maxConsecutiveTrackFailures = 3,
+            currentMediaIdProvider = { "track" },
+            playWhenReadyProvider = { true },
+            currentIndexProvider = { 0 },
+            positionGenerationProvider = { 0L },
+            connectedProvider = { true },
+            playbackBlockedProvider = { false },
+            healthyPlaybackProvider = { true },
+            pausePlayback = {},
+            preparePlayback = {},
+            playbackPositionMsProvider = { position },
+            onHealthyStream = { resets++ },
+        )
+        assertEquals(1_500L, coordinator.nextRetryDelayMs("track"))
+        coordinator.onPlaybackActivity("track", true, true)
+        advanceTimeBy(5_001L)
+        position += 5_000L
+        coordinator.onPlaybackActivity("track", true, true)
+        assertEquals(3_000L, coordinator.nextRetryDelayMs("track"))
+        advanceTimeBy(25_000L); runCurrent()
+        assertEquals(1, resets)
+        assertEquals(1_500L, coordinator.nextRetryDelayMs("track"))
+        coordinator.onPlaybackActivity("track", false, false)
+        coordinator.onPlaybackActivity("track", true, true)
+        advanceTimeBy(30_001L); runCurrent()
+        assertEquals(1, resets)
+        assertEquals(3_000L, coordinator.nextRetryDelayMs("track"))
     }
 
     @Test

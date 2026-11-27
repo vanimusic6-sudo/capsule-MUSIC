@@ -86,11 +86,12 @@ class UiEnergyRegressionTest {
     fun `mini player procedural motion stops when playback is not active`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
         val normalized = source.replace(Regex("\\s+"), " ")
-        assertTrue(
-            normalized.contains(
-                "animated = visualsActive && isPlaying && playbackState == Player.STATE_READY",
-            ),
-        )
+        assertTrue(normalized.contains(
+            "val decorativeMotion = visualsActive && LocalCapsuleBackgroundMotionEnabled.current",
+        ))
+        assertTrue(normalized.contains(
+            "animated = decorativeMotion && isPlaying && playbackState == Player.STATE_READY",
+        ))
     }
 
     @Test
