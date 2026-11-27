@@ -363,6 +363,21 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun matteGlassPreservesBlackWhiteAndDoesNotPaintAGreyOverlay() {
+        assertEquals(0f, immersiveMatteChannel(0f, 0f, 1f), 0f)
+        assertEquals(1f, immersiveMatteChannel(1f, 1f, 1f), 0f)
+        assertEquals(0.4f, immersiveMatteChannel(0.4f, 0.4f, 0f), 0f)
+        val mid = immersiveMatteChannel(0.4f, 0.4f, 1f)
+        assertTrue(mid > 0.4f && mid < 0.44f)
+        val r = immersiveMatteChannel(0.8f, 0.35f, 1f)
+        val b = immersiveMatteChannel(0.2f, 0.35f, 1f)
+        assertTrue("Preserve cover hue but soften contrast", r - b in 0.50f..0.60f)
+        for (v in 0..1000) {
+            val x = v / 1000f
+            assertTrue(immersiveMatteChannel(x, x, 1f) in 0f..1f)
+        }
+    }
+
     @Test fun subtleDitherPreservesMeanAndSmoothsQuantizedGradients() {
         val offsets = (0..3).flatMap { y -> (0..3).map { x -> immersiveGradientDither(x, y) } }
         assertEquals(16, offsets.toSet().size)

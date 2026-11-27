@@ -874,7 +874,7 @@ internal fun CapsuleImmersiveContent(
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction) {
-            "image-diffuse-gradient-v14|${frame?.key}|$coverFraction"
+            "image-matte-gradient-v15|${frame?.key}|$coverFraction"
         }
         // This texture is keyed to the currently displayed frame. No outgoing
         // bitmap is retained, so there is no cross-song GPU layer to draw.

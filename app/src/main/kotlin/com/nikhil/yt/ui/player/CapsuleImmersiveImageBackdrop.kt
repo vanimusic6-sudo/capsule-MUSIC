@@ -304,22 +304,29 @@ internal fun Bitmap.capsuleImmersivePhotoBlur(aspect: Float, landscape: Boolean)
     }
     val offset = h - stripH
     val soft = source.copyOfRange(offset * w, source.size)
-    repeat(2) {
-        pass(source, scratch, true, 13)
-        pass(scratch, source, false, 13)
-    }
+    // Intermediate optical level: interpolate neighbouring blur strengths
+    // instead of crossfading two very different images at the join.
+    pass(source, scratch, true, 7)
+    pass(scratch, source, false, 7)
+    val medium = source.copyOfRange(offset * w, source.size)
+    pass(source, scratch, true, 15)
+    pass(scratch, source, false, 15)
     val result = IntArray(w * stripH)
     for (y in 0 until stripH) {
         val fraction = IMMERSIVE_BLUR_STRIP_START +
             (1f - IMMERSIVE_BLUR_STRIP_START) * y / (stripH - 1)
-        val mix = immersiveSmootherStep(0.66f, 0.94f, fraction)
+        val firstMix = immersiveSmootherStep(0.66f, 0.82f, fraction)
+        val secondMix = immersiveSmootherStep(0.77f, 0.97f, fraction)
         val alpha = (immersiveBlurredPhotoAlpha(fraction) * 255f + 0.5f).toInt().coerceIn(0, 255)
         for (x in 0 until w) {
             val i = y * w + x
             fun channel(shift: Int): Int {
                 val a = soft[i] ushr shift and 255
+                val m = medium[i] ushr shift and 255
                 val b = source[(y + offset) * w + x] ushr shift and 255
-                return (a + (b - a) * mix + 0.5f).toInt().coerceIn(0, 255)
+                val intermediate = a + (m - a) * firstMix
+                return (intermediate + (b - intermediate) * secondMix + 0.5f)
+                    .toInt().coerceIn(0, 255)
             }
             // Bake the opacity into the small strip. Compose can draw it
             // directly; no separate full-height GPU masking layer.
@@ -538,6 +545,18 @@ internal fun immersiveLegacyScrim(y: Float): Float {
         (c - b) * roundedHinge(0.68f)
 }
 
+/**
+ * Matte glass is a local optical tone response, not a grey translucent sheet.
+ * Gentle diffusion lowers chromatic contrast and lifts midtones without
+ * adding light to black or shifting a neutral cover towards an artificial hue.
+ * All of it is baked into the existing backdrop texture.
+ */
+internal fun immersiveMatteChannel(channel: Float, luminance: Float, strength: Float): Float {
+    val s = strength.coerceIn(0f, 1f)
+    val diffuse = channel + (luminance - channel) * (0.055f * s)
+    return (diffuse + 0.10f * s * diffuse * (1f - diffuse)).coerceIn(0f, 1f)
+}
+
 /** Full photographic continuation, baked once on a worker. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
@@ -573,7 +592,10 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
             near, androidx.compose.ui.graphics.lerp(middle, far, 0.5f),
             0.28f + 0.32f * progress,
         )
-        val photo = sample(pageX, (pageY / stage).coerceIn(0f, 1f))
+        // The extraction grid ends at 82% of the real crop; account for that
+        // when aligning the diffuse underlay to the actual sharp photograph.
+        val photo = sample(pageX,
+            (pageY / stage / IMMERSIVE_VISIBLE_SAMPLE_END).coerceIn(0f, 1f))
         val color = androidx.compose.ui.graphics.lerp(
             photo, tail, immersiveSmootherStep(stage * 0.70f, stage, pageY),
         )
@@ -617,27 +639,38 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val groundMix = if (groundChannels != null)
             immersiveSmootherStep(stage * 0.72f, stage * 0.98f, pageY)
         else 0f
+        // Keep the original contact area. The matte response only appears
+        // inside the existing photo dissolve and remains stable below it.
+        val matte = immersiveSmootherStep(stage * 0.76f, stage, pageY)
         for (x in 0 until PAINT_WIDTH) {
             if (groundChannels != null && groundMix >= 1f) {
-                fun channel(c: Int) = (groundChannels[c] * (1f - scrim) * 255f + 0.5f)
-                    .toInt().coerceIn(0, 255)
+                val luma = 0.2126f * groundChannels[0] + 0.7152f * groundChannels[1] +
+                    0.0722f * groundChannels[2]
+                fun channel(c: Int) = (immersiveMatteChannel(groundChannels[c], luma, matte) *
+                    (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255)
                 pixels[y * PAINT_WIDTH + x] = 0xFF000000.toInt() or
                     (channel(0) shl 16) or (channel(1) shl 8) or channel(2)
                 continue
             }
             var pixel = -0x1000000
             val dither = if (groundChannels == null) immersiveGradientDither(x, y) else 0f
-            for (c in 0..2) {
+            fun reconstructedChannel(c: Int): Float {
                 var value = 0f
                 for (dy in 0..3) {
                     val sy = backdropSplineY.indices[y * 4 + dy]
                     value += reconstructed[(sy * PAINT_WIDTH + x) * 3 + c] *
                         backdropSplineY.weights[y * 4 + dy]
                 }
-                val settled = if (groundChannels != null)
+                return if (groundChannels != null)
                     value + (groundChannels[c] - value) * groundMix else value
-                pixel = pixel or ((settled * (1f - scrim) * 255f + 0.5f + dither).toInt().coerceIn(0, 255) shl (16 - c * 8))
             }
+            val r = reconstructedChannel(0)
+            val g = reconstructedChannel(1)
+            val b = reconstructedChannel(2)
+            val luma = 0.2126f * r + 0.7152f * g + 0.0722f * b
+            fun channel(value: Float) = (immersiveMatteChannel(value, luma, matte) *
+                (1f - scrim) * 255f + 0.5f + dither).toInt().coerceIn(0, 255)
+            pixel = pixel or (channel(r) shl 16) or (channel(g) shl 8) or channel(b)
             pixels[y * PAINT_WIDTH + x] = pixel
         }
     }
