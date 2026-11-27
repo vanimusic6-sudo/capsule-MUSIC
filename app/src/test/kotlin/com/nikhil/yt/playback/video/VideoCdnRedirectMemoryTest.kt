@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VideoCdnRedirectMemoryTest {
+    @Test fun retiredLinkDoesNotAuthorizeAnotherExtraction() {
+        val refused = java.io.IOException("wrapped", VideoRetiredLinkException())
+        assertTrue(isVideoAccessStop(refused))
+        assertTrue(isTerminalVideoLoadFailure(refused))
+        assertFalse(isVideoAccessStop(java.net.SocketTimeoutException("read timed out")))
+    }
+
     @Test fun shortcutIsBoundToNetworkAndExpires() {
         var now = 0L
         val memory = VideoCdnRedirectMemory { now }

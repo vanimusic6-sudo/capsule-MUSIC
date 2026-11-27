@@ -39,6 +39,14 @@ internal object VideoRejectedLinks {
 }
 internal class VideoRetiredLinkException : IOException("VIDEO signed link was previously refused")
 
+/** 410 may renew an expired URL once; access refusal is not recoverable. */
+internal fun isVideoAccessStop(error: Throwable): Boolean =
+    generateSequence(error as Throwable?) { it.cause }.take(12).any {
+        it is VideoRetiredLinkException ||
+            (it is InvalidResponseCodeException && it.responseCode in setOf(401, 403, 429)) ||
+            it is com.nikhil.yt.innertube.CapsuleVideoRequestGuard.RequestBlockedException
+    }
+
 internal fun isTerminalVideoLoadFailure(error: Throwable): Boolean =
     generateSequence(error as Throwable?) { it.cause }.take(12).any {
         it is VideoRetiredLinkException ||
@@ -79,7 +87,7 @@ internal class CapsuleVideoLinkDataSource(private val upstream: DataSource) : Da
         } catch (failure: IOException) {
             val status = generateSequence(failure as Throwable?) { it.cause }.take(12)
                 .filterIsInstance<InvalidResponseCodeException>().firstOrNull()?.responseCode
-            if (status == 403 || status == 410) VideoRejectedLinks.reject(url)
+            if (status == 401 || status == 403 || status == 410) VideoRejectedLinks.reject(url)
             if (status == null && failure.isExpectedAudioCdnInterruption()) {
                 if (com.nikhil.yt.utils.GlobalLog.isEnabled)
                     Timber.tag("CapsuleVideo").d("video-cdn-interrupted key=%s", safeKey)

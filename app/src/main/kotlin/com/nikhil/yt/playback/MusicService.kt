@@ -1331,6 +1331,7 @@ class MusicService :
                 it is androidx.media3.datasource.HttpDataSource.HttpDataSourceException
         }
         if (!recoverable || stream == null || videoRecoveryAttempts >= 2 ||
+            com.nikhil.yt.playback.video.isVideoAccessStop(failure) ||
             CapsuleVideoRequestGuard.isBlocked()
         ) { failVideoSession(mediaId, failure); return }
         val lease = videoSessionGeneration
@@ -1364,6 +1365,7 @@ class MusicService :
                     return@launch
                 }
                 lastFailure = result.exceptionOrNull() ?: lastFailure
+                if (com.nikhil.yt.playback.video.isVideoAccessStop(lastFailure)) break
             }
             videoRecoveryJob = null
             if (lease == videoSessionGeneration && player.currentMediaItem?.mediaId == mediaId)
@@ -1562,6 +1564,16 @@ class MusicService :
                     !playbackPositionGeneration.isCurrent(generation)
                 ) return@launch
 
+                // An access stop can arrive while the watchdog is asleep. It
+                // must not start a fresh resolve or advance the queue.
+                if (com.nikhil.yt.playback.audio.AudioAccessGate.discipline.stopFor(id) != null ||
+                    CapsuleAudioEngine.playbackBlockedExceptionOrNull() != null
+                ) {
+                    queueSkipBlockedForMediaId = id
+                    audioResolveCoordinator.cancelMedia(id) { playbackUrlCache.remove(id) }
+                    pausePlaybackFor("audio-stall-access-stop")
+                    return@launch
+                }
                 val bufferedAheadMs = AudioBufferStallPolicy.currentItemHeadroomMs(player.bufferedPosition, player.currentPosition)
                 val growthMs = (player.bufferedPosition - beforeBufferedPositionMs).coerceAtLeast(0L)
                 if (!AudioBufferStallPolicy.shouldRefresh(
@@ -1590,29 +1602,30 @@ class MusicService :
                     continue
                 }
                 val attempts = audioBufferStallRefreshes[id] ?: 0
-                if (attempts >= AudioBufferStallPolicy.MAX_AUTOMATIC_REFRESHES_PER_TRACK) {
+                // Use the same CDN recovery allowance as onPlayerError. A
+                // timeout followed by a watchdog stall is not a second budget.
+                if (forceSabrAudio || playbackRecoveryCoordinator.hasUsedCdnRecovery(id) ||
+                    attempts >= AudioBufferStallPolicy.MAX_AUTOMATIC_REFRESHES_PER_TRACK) {
                     Timber.tag("PlaybackRecovery").w(
                         "audio-buffer-stall exhausted id=%s attempts=%d aheadMs=%d growthMs=%d",
                         id, attempts, bufferedAheadMs, growthMs,
                     )
-                    // Do not leave Media3 silently BUFFERING forever after
-                    // two fresh-URL attempts made no progress. Honor the
-                    // user's Auto Skip on Error setting and the existing
-                    // consecutive-track failure circuit breaker.
-                    if (player.currentMediaItem?.mediaId == id &&
-                        player.playbackState == Player.STATE_BUFFERING &&
-                        player.playWhenReady && isNetworkConnected.value &&
-                        !playbackRecoveryCoordinator.isNetworkRecoveryActive() &&
-                        streamRetryJob?.isActive != true
-                    ) handleTerminalPlaybackError()
+                    // The same selection has spent its only CDN recovery.
+                    // Do not start a queue-wide chain of new requests.
+                    queueSkipBlockedForMediaId = id
+                    audioResolveCoordinator.cancelMedia(id) { playbackUrlCache.remove(id) }
+                    pausePlaybackFor("audio-stall-recovery-exhausted")
                     return@launch
                 }
+                val recovery = playbackRecoveryCoordinator.onCdnFailure(id, signedUrlRejected = false, unresponsiveOpen = true)
                 val delayMs = playbackRecoveryCoordinator.nextRetryDelayMs(id)
-                if (delayMs == null) {
+                if (recovery == AudioCdnRecoveryAction.SKIP_TRACK || delayMs == null) {
                     // Other recovery paths may already have consumed the
                     // shared retry budget. Do not silently abandon BUFFERING.
                     Timber.tag("PlaybackRecovery").w("audio-buffer-stall shared retry budget exhausted id=%s", id)
-                    handleTerminalPlaybackError()
+                    queueSkipBlockedForMediaId = id
+                    audioResolveCoordinator.cancelMedia(id) { playbackUrlCache.remove(id) }
+                    pausePlaybackFor("audio-stall-budget-exhausted")
                     return@launch
                 }
                 audioBufferStallRefreshes.remove(id)
@@ -1624,33 +1637,8 @@ class MusicService :
                     "audio-buffer-stall id=%s aheadMs=%d growthMs=%d attempt=%d; fresh URL requested",
                     id, bufferedAheadMs, growthMs, attempts + 1,
                 )
-                // This is NOT a 403 or bot-check: never touch BotGuard,
-                // the global rate-limit breaker, or the player cipher.
-                // A new short track which NEVER became ready must not retry
-                // the same unusable client twice. A short MID-TRACK rebuffer
-                // gets one same-client refresh; long-form streams rotate
-                // sooner if the CDN body is permanently paced. SABR selection
-                // remains separately bounded by the existing route policy.
-                val stalledPlayback = playbackUrlCache.get(id)
-                if (stalledPlayback?.streamClient != null &&
-                    AudioBufferStallPolicy.shouldRotateClientAfterStall(
-                        contentLengthBytes = stalledPlayback.format.contentLength,
-                        sabrSelected = stalledPlayback.sabrBootstrap != null,
-                        forceSabr = forceSabrAudio,
-                        observedStalls = attempts,
-                        hasEverBeenReady = audioBufferLastReadyMediaId == id,
-                    )
-                ) {
-                    CapsuleAudioEngine.markStreamClientFailed(
-                        videoId = id,
-                        clientKey = stalledPlayback.streamClient,
-                        httpStatusCode = null,
-                    )
-                    Timber.tag("CapsuleHybrid").w(
-                        "audio-stall id=%s stalledClient=%s attempt=%d next=alternative-client",
-                        id, stalledPlayback.streamClient, attempts + 1,
-                    )
-                }
+                // A slow socket does not establish a bad extractor identity.
+                // Preserve the selected Direct policy and refresh only the URL.
                 audioResolveCoordinator.cancelMedia(id) { playbackUrlCache.remove(id) }
                 scheduleStreamRefreshRetry(
                     mediaId = id,

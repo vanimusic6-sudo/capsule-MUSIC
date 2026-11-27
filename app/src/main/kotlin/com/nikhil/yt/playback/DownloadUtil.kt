@@ -220,6 +220,18 @@ constructor(
                     connectivityManager = connectivityManager,
                 )
 
+            // Preserve an explicit server stop even when a network/account
+            // handoff happens during the same request. A new context is not
+            // permission to retry a refusal or rate limit.
+            result.exceptionOrNull()?.let { failure ->
+                if (com.nikhil.yt.playback.audio.audioAccessStopFrom(failure) != null ||
+                    downloadAdmissionClosed() ||
+                    generateSequence(failure) { it.cause }.take(12).any {
+                        it is InvalidResponseCodeException && it.responseCode in setOf(401, 403, 429)
+                    }
+                ) throw failure
+            }
+            com.nikhil.yt.playback.audio.AudioAccessGate.check(mediaId)
             if (selection != playbackContext() ||
                 resumeContext.second != connectivityManager.activeNetwork ||
                 resumeContext.third != CapsuleInnerTubeXPlayer.sessionIdentity()
