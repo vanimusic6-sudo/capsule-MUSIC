@@ -301,7 +301,7 @@ class AudioCdnRedirectPolicyTest {
             runCatching { AudioCdnRedirectInterceptor().intercept(chain) }.exceptionOrNull()
 
         assertTrue("expected an IOException, got $failure", failure is IOException)
-        assertEquals(AUDIO_CDN_MAX_EXTRA_REQUESTS + 1, chain.asked.size)
+        assertEquals(listOf(ORIGIN, SAME_GROUP), chain.asked)
     }
 }
 

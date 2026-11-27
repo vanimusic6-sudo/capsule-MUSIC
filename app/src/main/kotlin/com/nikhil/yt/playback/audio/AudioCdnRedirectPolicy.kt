@@ -90,7 +90,7 @@ internal fun Request.forCdnTarget(target: HttpUrl): Request {
 
 private val PUBLIC_REFERERS = setOf("https://music.youtube.com/", "https://www.youtube.com/", "https://www.youtube-nocookie.com/")
 private val FORWARD_HEADERS = setOf(
-    "range", "if-range", "accept", "accept-encoding", "user-agent", "origin",
+    "range", "if-range", "accept", "accept-encoding", "accept-language", "user-agent", "origin",
 )
 
 /** Follow server redirects, retain successful destinations, and isolate known failed hops. */
