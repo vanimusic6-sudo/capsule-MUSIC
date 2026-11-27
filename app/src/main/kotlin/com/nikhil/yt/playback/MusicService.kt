@@ -5315,6 +5315,14 @@ class MusicService :
                             val context = spec.customData as? AudioCdnOpenContext
                             if (context != null) {
                                 playbackUrlCache.reject(context.mediaId, spec.uri.toString())
+                                if (status == 403 && context.routeSession != null &&
+                                    context.routeSession == com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer.sessionIdentity()
+                                ) {
+                                    com.nikhil.yt.playback.audio.AudioRouteHistory.memory.refused(
+                                        context.routeSession, context.mediaId, context.streamClient,
+                                        context.itag, spec.uri.host, com.nikhil.yt.playback.audio.AudioCdnLinkIdentity.ref(spec.uri.toString()),
+                                    )
+                                }
                                 Timber.tag("PlaybackRecovery").i(
                                     "cdn-link-retired id=%s status=%d", context.mediaId, status,
                                 )
@@ -5324,6 +5332,14 @@ class MusicService :
                             val context = dataSpec.customData as? AudioCdnOpenContext
                             if (context != null) {
                                 audioCdnSkipBurstPolicy.onFirstByte(context.mediaId)
+                                if (context.routeSession != null &&
+                                    context.routeSession == com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer.sessionIdentity()
+                                ) {
+                                    com.nikhil.yt.playback.audio.AudioRouteHistory.memory.accepted(
+                                        context.routeSession, context.mediaId, context.streamClient,
+                                        context.itag, dataSpec.uri.host,
+                                    )
+                                }
                                 playbackUrlCache.markDeliveredAudioBytes(
                                     mediaId = context.mediaId,
                                     streamUrl = dataSpec.uri.toString(),
@@ -5583,6 +5599,8 @@ class MusicService :
                 source = source,
                 streamClient = playback.streamClient,
                 rangeChunkSizeBytes = playback.rangeChunkSizeBytes,
+                routeSession = playback.routeSession,
+                itag = playback.format.itag,
             )
         }
         return dataSpec.buildUpon()

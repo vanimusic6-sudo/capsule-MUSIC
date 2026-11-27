@@ -19,6 +19,8 @@ internal data class AudioCdnOpenContext(
      * the way the library intends rather than by a constant chosen from failure counts.
      */
     val rangeChunkSizeBytes: Long = 0L,
+    val routeSession: Any? = null,
+    val itag: Int? = null,
 )
 
 /**

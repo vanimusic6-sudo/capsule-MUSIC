@@ -11,6 +11,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.nikhil.yt.playback.audio.AudioCdnLinkIdentity
+import com.nikhil.yt.playback.audio.isExpectedAudioCdnInterruption
 import java.io.IOException
 import timber.log.Timber
 
@@ -58,15 +59,17 @@ internal class CapsuleVideoLinkDataSource(private val upstream: DataSource) : Da
         // supplied by an HLS child playlist or encryption-key reference.
         if (!com.nikhil.yt.innertube.video.VideoStreamValidation.isSupportedUrl(url))
             throw IOException("Untrusted VIDEO media address")
-        val googleVideo = true
+        val safeKey = dataSpec.key?.takeIf {
+            it.length <= 80 && it.matches(Regex("capsule:video(?:-stream)?:(?:(?:audio|video):)?[A-Za-z0-9_-]{11}:[0-9]+"))
+        } ?: "media"
         if (VideoRejectedLinks.isRejected(url)) throw VideoRetiredLinkException()
         val start = System.nanoTime()
         try {
             return upstream.open(dataSpec).also {
-                if (googleVideo && com.nikhil.yt.utils.GlobalLog.isEnabled) {
+                if (com.nikhil.yt.utils.GlobalLog.isEnabled) {
                     Timber.tag("CapsuleVideo").i(
                         "video-cdn-open key=%s pos=%d len=%d ref=%s ms=%d",
-                        dataSpec.key?.take(80) ?: "none", dataSpec.position, dataSpec.length,
+                        safeKey, dataSpec.position, dataSpec.length,
                         AudioCdnLinkIdentity.ref(url), (System.nanoTime() - start) / 1_000_000L,
                     )
                 }
@@ -74,10 +77,15 @@ internal class CapsuleVideoLinkDataSource(private val upstream: DataSource) : Da
         } catch (failure: IOException) {
             val status = generateSequence(failure as Throwable?) { it.cause }.take(12)
                 .filterIsInstance<InvalidResponseCodeException>().firstOrNull()?.responseCode
-            if (googleVideo && (status == 403 || status == 410)) VideoRejectedLinks.reject(url)
-            if (googleVideo) Timber.tag("CapsuleVideo").w(
+            if (status == 403 || status == 410) VideoRejectedLinks.reject(url)
+            if (status == null && failure.isExpectedAudioCdnInterruption()) {
+                if (com.nikhil.yt.utils.GlobalLog.isEnabled)
+                    Timber.tag("CapsuleVideo").d("video-cdn-interrupted key=%s", safeKey)
+                throw failure
+            }
+            Timber.tag("CapsuleVideo").w(
                 "video-cdn-failed key=%s pos=%d len=%d ref=%s status=%s type=%s ms=%d",
-                dataSpec.key?.take(80) ?: "none", dataSpec.position, dataSpec.length,
+                safeKey, dataSpec.position, dataSpec.length,
                 AudioCdnLinkIdentity.ref(url), status?.toString() ?: "none",
                 failure.javaClass.simpleName, (System.nanoTime() - start) / 1_000_000L,
             )

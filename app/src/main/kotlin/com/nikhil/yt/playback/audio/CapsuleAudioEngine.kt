@@ -44,6 +44,7 @@ object CapsuleAudioEngine {
         val rangeChunkSizeBytes: Long = 0L,
         /** Offline downloads stay on direct streams until SABR renewal is validated. */
         val sabrBootstrap: SabrBootstrap? = null,
+        val routeSession: Any? = null,
     )
 
     fun prioritizePlayback(mediaId: String) = CapsuleInnerTubeXPlayer.prioritizePlayback(mediaId)
@@ -149,6 +150,7 @@ object CapsuleAudioEngine {
                     resolvedAtElapsedMs = android.os.SystemClock.elapsedRealtime(),
                     rangeChunkSizeBytes = resolved.rangeChunkSizeBytes,
                     sabrBootstrap = resolved.sabrBootstrap,
+                    routeSession = resolved.routeSession,
                 )
             }
             .onFailure(CapsulePlaybackSafety::observeFailure)

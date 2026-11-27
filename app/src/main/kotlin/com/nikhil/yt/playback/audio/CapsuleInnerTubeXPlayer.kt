@@ -230,6 +230,7 @@ object CapsuleInnerTubeXPlayer {
          */
         val rangeChunkSizeBytes: Long,
         val sabrBootstrap: SabrBootstrap? = null,
+        val routeSession: Any? = null,
     )
 
     suspend fun prewarm(prewarmWebPoToken: Boolean = false) {
@@ -352,7 +353,7 @@ object CapsuleInnerTubeXPlayer {
                             // Decide account entitlement from the SAME immutable session
                             // the extractor uses. An authorization change while this
                             // request waits in the background must not select an old plan.
-                            val effectiveOrder =
+                            val baseOrder =
                                 if (download) {
                                     AudioDownloadClientPolicy.orderForSession(
                                         extractionBundle.innerTube.hasSapCookieAuth(),
@@ -364,6 +365,19 @@ object CapsuleInnerTubeXPlayer {
                                         configuredOrder, isStartupWebReady(), ::requestStartupWarmup,
                                     )
                                 }
+                            val advice = if (!download && !forceSabr)
+                                AudioRouteHistory.memory.advice(extractionBundle.key, videoId)
+                            else AudioRouteAdvice()
+                            // Keep user order for healthy songs. Only a previously accepted
+                            // route for this exact song/session can reorder its own plan.
+                            val effectiveOrder = advice.prioritize(baseOrder)
+                            val effectiveQuality = if (advice.preferAac &&
+                                resolvedQuality in setOf(InnerTubeXAudioQuality.HIGH, InnerTubeXAudioQuality.AUTO))
+                                InnerTubeXAudioQuality.MP4 else resolvedQuality
+                            if (effectiveQuality != resolvedQuality || effectiveOrder != baseOrder) {
+                                Timber.tag(TAG).i("AUDIO learned-route id=%s quality=%s preferred=%s",
+                                    videoId, effectiveQuality, effectiveOrder.first())
+                            }
                             val primaryProfileId = effectiveOrder.first()
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s primaryProfile=%s",
@@ -375,20 +389,20 @@ object CapsuleInnerTubeXPlayer {
                                 extractionBundle = extractionBundle,
                                 videoId = videoId,
                                 baseHints = baseHints,
-                                audioQuality = resolvedQuality,
+                                audioQuality = effectiveQuality,
                                 primaryProfileId = primaryProfileId,
                                 preferredProfiles = effectiveOrder,
                                 priorityProvider = effectivePriority,
                                 download = download,
                                 forceSabr = forceSabr && !download,
-                            )
+                            ).toPlaybackData().copy(routeSession = extractionBundle.key)
                         }
                     }
                 }
 
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
             if (!download) com.nikhil.yt.playback.TrackAvailability.clear(videoId)
-            Result.success(stream.toPlaybackData())
+            Result.success(stream)
         } catch (timeout: TimeoutCancellationException) {
             currentCoroutineContext().ensureActive()
             Timber.tag(TAG).w(
@@ -802,6 +816,7 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun clearPlaybackState() {
+        AudioRouteHistory.memory.clear()
         entitlementFailures.clear()
         com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
@@ -811,6 +826,7 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun onNetworkChanged() {
+        AudioRouteHistory.memory.clear()
         entitlementFailures.clear()
         com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
