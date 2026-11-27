@@ -5279,6 +5279,13 @@ class MusicService :
                 // the one-shot same-link read retry across that boundary.
                 currentNetworkIdentity = { connectivityManager.activeNetwork?.networkHandle },
                 retryContinuationOpen = true,
+                // A response held by Media3 is not idle in OkHttp's pool,
+                // even if its socket has seen no traffic for a minute. Retire
+                // released idle connections before opening the next slice.
+                retireIdleConnections = {
+                    audioCdnConnectionPool.evictAll()
+                    Timber.tag("AudioCDN").d("cdn-pool-retire reason=long-range-loader-idle")
+                },
             )
         val audioTransport = DataSource.Factory {
             CapsuleAudioTransportDataSource(

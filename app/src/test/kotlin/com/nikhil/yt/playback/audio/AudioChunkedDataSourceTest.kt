@@ -203,6 +203,61 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun longLoaderIdleRetiresPoolAfterClosingRangeAndBeforeNextGet() {
+        val bytes = content(300)
+        val inner = FakeUpstream(bytes, maxBytesPerRead = 64)
+        var clock = 0L
+        val events = mutableListOf<String>()
+        val upstream = object : DataSource by inner {
+            override fun open(dataSpec: DataSpec): Long {
+                events += "open:${dataSpec.position}"
+                return inner.open(dataSpec)
+            }
+            override fun close() {
+                events += "close"
+                inner.close()
+            }
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128,
+            retireIdleConnections = { events += "retire" }, nowMs = { clock })
+        try {
+            source.open(spec(300))
+            val output = ByteArray(300)
+            assertEquals(64, source.read(output, 0, 64))
+            clock += 30_000L
+            assertEquals(64, source.read(output, 64, 64))
+            clock += 32_000L
+            assertEquals(64, source.read(output, 128, 64))
+            assertEquals(64, source.read(output, 192, 64))
+            assertEquals(44, source.read(output, 256, 44))
+            assertArrayEquals(bytes, output)
+            assertEquals(listOf("open:0", "close", "retire", "open:128", "close", "open:256"), events)
+        } finally { source.close() }
+    }
+
+    @Test
+    fun slowActiveReadsAndShortIdleDoNotRetireHealthyPool() {
+        val bytes = content(300)
+        val inner = FakeUpstream(bytes, maxBytesPerRead = 64)
+        var clock = 0L
+        var retired = 0
+        val upstream = object : DataSource by inner {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                clock += 60_000L // Actual network wait is not loader inactivity.
+                return inner.read(buffer, offset, length)
+            }
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128,
+            retireIdleConnections = { retired++ }, nowMs = { clock })
+        try {
+            source.open(spec(300))
+            assertArrayEquals(bytes, drain(source))
+            assertEquals(0, retired)
+            assertEquals(3, inner.opens.size)
+        } finally { source.close() }
+    }
+
+    @Test
     fun resetOpeningContinuationRecoversImmediatelyAtSameOffset() {
         val bytes = content(500)
         val inner = FakeUpstream(bytes)

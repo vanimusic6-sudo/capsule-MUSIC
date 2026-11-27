@@ -12,6 +12,12 @@ import androidx.media3.datasource.DataSpec
 /** Default bounded audio request size when the extractor supplies no limit. */
 internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
+// Field captures show reset after about a minute of connection lifetime;
+// the latest range sat idle for 62 seconds before the following GET failed.
+// Retire idle pooled connections after accumulated loader inactivity, not
+// merely a slow transfer. No periodic keepalive traffic or extra GET.
+internal const val AUDIO_CDN_RANGE_IDLE_RETIRE_MS = 45_000L
+
 private const val LONG_FORM_AUDIO_MIN_BYTES = 12L * 1024 * 1024
 private const val LONG_FORM_MAX_CHUNK_BYTES = 1L * 1024 * 1024
 
@@ -52,6 +58,8 @@ internal class AudioChunkedDataSource(
     initialChunkBytes: (DataSpec) -> Long = { 0L },
     currentNetworkIdentity: () -> Long? = { null },
     retryContinuationOpen: Boolean = false,
+    retireIdleConnections: (() -> Unit)? = null,
+    nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) : ProgressiveRangeSource(
     upstream = upstream,
     planFor = { spec ->
@@ -67,6 +75,10 @@ internal class AudioChunkedDataSource(
     canResume = { failure, _ ->
         !failure.isExpectedAudioCdnInterruption() && failure.isTransientAudioCdnSocketReset()
     },
+    afterContinuationClose = retireIdleConnections?.let { retire ->
+        { idleMs -> if (idleMs >= AUDIO_CDN_RANGE_IDLE_RETIRE_MS) retire() }
+    },
+    nowMs = nowMs,
     canRetryContinuationOpen = { failure ->
         retryContinuationOpen && failure.isAudioCdnTransportFailure() &&
             failure.isTransientAudioCdnSocketReset() &&
@@ -82,6 +94,7 @@ internal class AudioChunkedDataSource(
         private val initialChunkBytes: (DataSpec) -> Long = { 0L },
         private val currentNetworkIdentity: () -> Long? = { null },
         private val retryContinuationOpen: Boolean = false,
+        private val retireIdleConnections: (() -> Unit)? = null,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
             AudioChunkedDataSource(
@@ -90,6 +103,7 @@ internal class AudioChunkedDataSource(
                 initialChunkBytes,
                 currentNetworkIdentity,
                 retryContinuationOpen,
+                retireIdleConnections,
             )
     }
 }
