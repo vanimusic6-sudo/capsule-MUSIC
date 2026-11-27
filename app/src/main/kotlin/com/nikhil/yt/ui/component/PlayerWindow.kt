@@ -55,6 +55,7 @@ internal fun PlayerWindow(
     val insets = WindowInsets.systemBars
     val direction = LocalLayoutDirection.current
     val localDensity = LocalDensity.current
+    val navigationHeight = LocalPlayerNavigationHeight.current
     val leftInset = with(localDensity) { miniInset.toPx() } + insets.getLeft(localDensity, direction)
     val rightInset = with(localDensity) { miniInset.toPx() } + insets.getRight(localDensity, direction)
     val interaction = remember(state) { MutableInteractionSource() }
@@ -167,7 +168,7 @@ internal fun PlayerWindow(
                                 else -> {
                                     val frame = playerPresentationBounds(p, size.width, size.height,
                                         (state.expandedBound - state.collapsedBound).toPx(),
-                                        miniHeight.toPx(), leftInset, rightInset)
+                                        miniHeight.toPx(), leftInset, rightInset, navigationHeight.toPx())
                                     translationY = frame.top
                                     val radius = playerPageContour(p, miniRadius.toPx(), density).radius
                                         .coerceAtMost(minOf(frame.width, frame.height) * 0.5f)
@@ -193,6 +194,9 @@ internal fun PlayerWindow(
         }
     }
 }
+
+/** Actual app navigation height; zero for rail layouts and routes without a bar. */
+internal val LocalPlayerNavigationHeight = staticCompositionLocalOf { 0.dp }
 
 /** A cached artwork enters with the page instead of starting a separate reveal. */
 internal val LocalPlayerSceneTransition = staticCompositionLocalOf { false }
