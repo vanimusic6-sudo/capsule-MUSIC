@@ -324,6 +324,24 @@ private fun refused(code: Int = 403): (Request) -> Response = { request ->
  * connection's first request is where every refusal in every capture has landed.
  */
 class AudioCdnRedirectShortcutTest {
+    @Test fun cachedAndFreshCrossHostRedirectsCarryOnlyTransportHeaders() {
+        val interceptor = AudioCdnRedirectInterceptor()
+        val origin = requestFor(ORIGIN).newBuilder()
+            .header("Cookie", "session=test").header("Authorization", "test")
+            .header("X-Goog-Visitor-Id", "test").header("Range", "bytes=16-31").build()
+        val inspect: (Request) -> Response = { hop ->
+            assertNull(hop.header("Cookie"))
+            assertNull(hop.header("Authorization"))
+            assertNull(hop.header("X-Goog-Visitor-Id"))
+            assertEquals("bytes=16-31", hop.header("Range"))
+            served()(hop)
+        }
+        interceptor.intercept(ScriptedChain(origin, listOf(redirectTo(SAME_GROUP), inspect))).close()
+        val cached = ScriptedChain(origin, listOf(inspect))
+        interceptor.intercept(cached).close()
+        assertEquals(listOf(SAME_GROUP), cached.asked)
+    }
+
     @Test
     fun `the second slice goes straight to where the first one landed`() {
         val targets = AudioCdnRedirectTargets()
@@ -433,7 +451,7 @@ class AudioCdnRedirectShortcutTest {
     }
 
     @Test
-    fun `declining a cross-group redirect still asks the true original`() {
+    fun `a learned hop follows a validated redirect with the suspect host budget`() {
         val targets = AudioCdnRedirectTargets()
         val health = AudioCdnHostHealth().apply {
             recordUnresponsiveOpen(OTHER_GROUP.substringAfter("https://").substringBefore('/'))
@@ -448,7 +466,8 @@ class AudioCdnRedirectShortcutTest {
             ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(OTHER_GROUP), served()))
         interceptor.intercept(second).close()
 
-        assertEquals(listOf(SAME_GROUP), second.asked)
+        assertEquals(listOf(SAME_GROUP, OTHER_GROUP), second.asked)
+        assertEquals(CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS.toInt() * 1000, second.timeoutsByHop.last().first)
     }
 
     @Test

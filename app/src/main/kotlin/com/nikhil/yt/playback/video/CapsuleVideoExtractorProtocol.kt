@@ -53,6 +53,7 @@ internal object CapsuleVideoIpc {
     const val METHOD_CANCEL = "cancel"
     const val METHOD_INVALIDATE = "invalidate"
     const val EXTRA_REQUEST_ID = "request_id"
+    const val EXTRA_INVENTORY_SCOPE = "inventory_scope"
     const val EXTRA_SESSION_KEY = "session_key"
     // All five route budgets total 32s. Leave room for initialization,
     // Binder delivery and matching instead of cutting the final routes off.

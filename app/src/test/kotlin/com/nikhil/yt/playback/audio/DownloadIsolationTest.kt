@@ -19,13 +19,13 @@ class DownloadIsolationTest {
                 order.first(), AudioResolvePriority.DOWNLOAD, authenticated,
                 isUploaded = false, excludedProfiles = emptySet(), preferredProfiles = order,
             )
-            assertEquals(order, plan)
+            assertEquals(order.take(2), plan)
             val fallback = CapsuleAudioFallbackPolicy.profilePlan(
                 order.first(), AudioResolvePriority.DOWNLOAD, authenticated,
                 isUploaded = false, excludedProfiles = setOf(order.first()), preferredProfiles = order,
             )
             assertEquals(order.drop(1), fallback)
-            assertTrue(fallback.size < CapsuleAudioFallbackPolicy.MAX_RESOLVE_ATTEMPTS)
+            assertTrue(fallback.size <= CapsuleAudioFallbackPolicy.MAX_RESOLVE_ATTEMPTS)
         }
     }
 
@@ -41,7 +41,7 @@ class DownloadIsolationTest {
             order.first(), AudioResolvePriority.DOWNLOAD, authenticated = true,
             isUploaded = false, excludedProfiles = emptySet(), preferredProfiles = order,
         )
-        assertEquals(order, plan)
+        assertEquals(order.take(2), plan)
         val afterVisionLoginRequired = CapsuleAudioFallbackPolicy.profilePlan(
             order.first(), AudioResolvePriority.DOWNLOAD, authenticated = true,
             isUploaded = false, excludedProfiles = setOf(AudioClientOrder.VISIONOS_0_1),
@@ -93,7 +93,7 @@ class DownloadIsolationTest {
         )
         val excluded = CapsuleInnerTubeXPlayer.failedStreamClients("timed-out-track", 101L, true)
         assertTrue(excluded.isEmpty())
-        assertEquals(AudioDownloadClientPolicy.order, CapsuleAudioFallbackPolicy.profilePlan(
+        assertEquals(AudioDownloadClientPolicy.order.take(2), CapsuleAudioFallbackPolicy.profilePlan(
             "VISIONOS_0_1", AudioResolvePriority.DOWNLOAD, false, false, excluded,
             AudioDownloadClientPolicy.order,
         ))

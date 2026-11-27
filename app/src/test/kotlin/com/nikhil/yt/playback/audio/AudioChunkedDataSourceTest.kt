@@ -2,6 +2,7 @@
 
 package com.nikhil.yt.playback.audio
 
+import com.nikhil.yt.playback.transport.RangeSizePolicy
 import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
@@ -27,7 +28,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class AudioChunkedDataSourceTest {
     @Test fun videoRangeBudgetGrowsOnRealFastReadsAndContractsOnPacedSocketReads() {
-        val policy = AudioCdnChunkRatePolicy(1024L * 1024, maximumChunkBytes = 4L * 1024 * 1024)
+        val policy = RangeSizePolicy(1024L * 1024, maximumChunkBytes = 4L * 1024 * 1024)
         repeat(3) { policy.observeRead(8192, 8192, 1L) }
         assertEquals(2L * 1024 * 1024, policy.onChunkComplete())
         repeat(3) { policy.observeRead(8192, 8192, 1L) }
@@ -43,7 +44,7 @@ class AudioChunkedDataSourceTest {
         assertEquals(halfMiB, adaptiveAudioMaxChunkBytes(3L * 1024 * 1024, halfMiB))
         assertEquals(halfMiB, adaptiveAudioMaxChunkBytes(C.LENGTH_UNSET.toLong(), halfMiB))
         assertEquals(1L * 1024 * 1024, adaptiveAudioMaxChunkBytes(46L * 1024 * 1024, halfMiB))
-        val policy = AudioCdnChunkRatePolicy(
+        val policy = RangeSizePolicy(
             halfMiB, maximumChunkBytes = adaptiveAudioMaxChunkBytes(46L * 1024 * 1024, halfMiB),
         )
         repeat(3) { policy.observeRead(8192, 8192, 1L) }
@@ -369,7 +370,7 @@ class AudioChunkedDataSourceTest {
 
     @Test
     fun slowNetworkReadsReduceOnlyUpcomingRangeWithoutReResolvingUrl() {
-        val policy = AudioCdnChunkRatePolicy(1024L * 1024)
+        val policy = RangeSizePolicy(1024L * 1024)
         repeat(3) {
             policy.observeRead(requestedBytes = 32 * 1024, readBytes = 16 * 1024, elapsedMs = 1_000L)
         }
@@ -382,7 +383,7 @@ class AudioChunkedDataSourceTest {
 
     @Test
     fun media3IdleBufferingAndShortReadsNeverTriggerAdaptiveNetworkRequests() {
-        val policy = AudioCdnChunkRatePolicy(1024L * 1024)
+        val policy = RangeSizePolicy(1024L * 1024)
         // A chunk taking 57 seconds wall-clock can be entirely healthy:
         // active socket reads complete instantly between long loader pauses.
         repeat(3) {
@@ -392,7 +393,7 @@ class AudioChunkedDataSourceTest {
         // A tiny requested read cannot prove throttling, even if it waited.
         repeat(5) { policy.observeRead(2 * 1024, 1, 9_000L) }
         assertEquals(1024L * 1024, policy.onChunkComplete())
-        val smallerExtractorSize = AudioCdnChunkRatePolicy(256L * 1024)
+        val smallerExtractorSize = RangeSizePolicy(256L * 1024)
         repeat(5) { smallerExtractorSize.observeRead(32 * 1024, 2 * 1024, 2_000L) }
         assertEquals(256L * 1024, smallerExtractorSize.onChunkComplete())
     }

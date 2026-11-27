@@ -3,16 +3,32 @@ package com.nikhil.yt.playback.video
 /** The LRU and the latest-quality index are changed atomically, including expiry and eviction. */
 internal class VideoStreamCache<T>(
     private val maxEntries: Int,
+    private val currentContext: () -> Any? = { null },
     private val isFresh: (T) -> Boolean,
 ) {
     private data class Entry<T>(val videoId: String, val value: T)
     private val entries = LinkedHashMap<String, Entry<T>>(16, 0.75f, true)
     private val latestKeys = HashMap<String, String>()
 
+    private var context: Any? = null
+    private var generation = 0L
+
+    @Synchronized fun generation(): Long {
+        val current = currentContext()
+        if (current != context) {
+            context = current
+            generation++
+            entries.clear()
+            latestKeys.clear()
+        }
+        return generation
+    }
+
     init { require(maxEntries > 0) }
 
     @Synchronized
     operator fun get(key: String): T? {
+        generation()
         val entry = entries[key] ?: return null
         if (isFresh(entry.value)) {
             // The requested quality may already be in the LRU. A hit must
@@ -27,6 +43,7 @@ internal class VideoStreamCache<T>(
 
     @Synchronized
     fun latest(videoId: String): T? {
+        generation()
         latestKeys[videoId]?.let { key ->
             // An overwritten key must never return another track's stream.
             if (entries[key]?.videoId == videoId) {
@@ -45,7 +62,8 @@ internal class VideoStreamCache<T>(
     }
 
     @Synchronized
-    fun put(videoId: String, key: String, value: T) {
+    fun put(videoId: String, key: String, value: T, expectedGeneration: Long = generation()): Boolean {
+        if (generation() != expectedGeneration) return false
         entries.filterValues { !isFresh(it.value) }.keys.toList().forEach(::remove)
         // Updating an existing key may replace a different video ID. Clear
         // its latest-quality pointer before installing the new entry.
@@ -53,6 +71,7 @@ internal class VideoStreamCache<T>(
         entries[key] = Entry(videoId, value)
         latestKeys[videoId] = key
         while (entries.size > maxEntries) remove(entries.keys.first())
+        return true
     }
 
     @Synchronized

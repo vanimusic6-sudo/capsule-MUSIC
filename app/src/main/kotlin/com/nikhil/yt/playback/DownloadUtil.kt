@@ -43,6 +43,7 @@ import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
+import com.nikhil.yt.playback.audio.AudioCdnRedirectInterceptor
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.dataStore
@@ -52,7 +53,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -159,7 +159,7 @@ constructor(
             .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
-            .followRedirects(true)
+            .followRedirects(false)
             .followSslRedirects(false)
             .addNetworkInterceptor { chain ->
                 AudioDownloadUrlPolicy.requireYouTubeMedia(chain.request().url.toString())
@@ -167,7 +167,11 @@ constructor(
             }
             .addInterceptor { chain ->
                 chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
-            }.build()
+            }
+            // Server-directed hops use the same credential policy as playback.
+            // Offline transfers keep redirect history local to this HTTP call.
+            .addInterceptor { chain -> AudioCdnRedirectInterceptor().intercept(chain) }
+            .build()
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
@@ -230,6 +234,9 @@ constructor(
 
             result.getOrNull()?.let { playbackData ->
                 AudioDownloadUrlPolicy.requireYouTubeMedia(playbackData.streamUrl)
+                if (resumeUrls.isRejected(mediaId, playbackData.streamUrl)) {
+                    throw IOException("Download resolver returned a retired media link")
+                }
                 storeDownloadMetadata(mediaId, playbackData)
                 if (resumeContext.second == connectivityManager.activeNetwork) {
                     resumeUrls.put(mediaId, playbackData, context = resumeContext)
@@ -254,9 +261,6 @@ constructor(
                     "resolve-timeout-retry id=%s attempt=%d budget=%d (no client ban)",
                     mediaId, attempt + 1, MAX_DOWNLOAD_RESOLVE_ATTEMPTS,
                 )
-                // Cancellable, off the playback thread; only the one affected
-                // download waits. A timeout never implies a server rate limit.
-                delay(650L)
                 return@repeat
             }
             throw failure

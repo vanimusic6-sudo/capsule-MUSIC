@@ -183,8 +183,12 @@ internal fun resolveVideoRoutes(
             // cancellation/deadline and rate limits stop all work immediately.
             VideoExtractionRequests.checkActive()
             onFailure(route, failure)
-            if (CapsuleNewPipeExtractor.classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
             val kind = CapsuleNewPipeExtractor.classify(failure)
+            if (kind == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
+            if (parserOnly && kind == CapsuleNewPipeFailure.BOT_BLOCKED) {
+                health?.failure(route, kind)
+                throw CapsuleVideoRoutesException(kind, failure)
+            }
             if (route == CapsuleVideoRoute.PIPEPIPE && kind == CapsuleNewPipeFailure.NETWORK) pipeNetworkFailed = true
             // An explicit access/unavailable verdict is not a transport failure.
             // Keep the existing no-compatible-format case eligible for fallback.

@@ -76,6 +76,21 @@ internal fun isCrossGroupGooglevideoRedirect(
     return from != to
 }
 
+/** Carry only transport headers across an origin boundary, including remembered redirects. */
+internal fun Request.forCdnTarget(target: HttpUrl): Request {
+    val builder = newBuilder().url(target)
+    if (url.host != target.host || url.port != target.port || url.scheme != target.scheme) {
+        for (name in headers.names()) {
+            if (name.lowercase(java.util.Locale.ROOT) !in FORWARD_HEADERS) builder.removeHeader(name)
+        }
+    }
+    return builder.build()
+}
+
+private val FORWARD_HEADERS = setOf(
+    "range", "if-range", "accept", "accept-encoding", "user-agent", "origin",
+)
+
 /** Follow server redirects, retain successful destinations, and isolate known failed hops. */
 internal class AudioCdnRedirectInterceptor(
     private val targets: AudioCdnRedirectTargets = AudioCdnRedirectTargets(),
@@ -112,12 +127,14 @@ internal class AudioCdnRedirectInterceptor(
             )
         } else null
         val taggedOrigin = origin.newBuilder().tag(AudioCdnRequestTrace::class.java, trace).build()
-        var request = if (shortcut != null) taggedOrigin.newBuilder().url(shortcut).build() else taggedOrigin
+        var request = if (shortcut != null) taggedOrigin.forCdnTarget(shortcut) else taggedOrigin
         var extraRequests = 0
         var stage = if (shortcut != null) "shortcut" else "original"
+        val visited = mutableSetOf<HttpUrl>()
         var hop = 0
 
         while (true) {
+            if (!visited.add(request.url)) throw IOException("Audio CDN redirect loop")
             hop += 1
             val sent = if (trace == null) request else request.newBuilder()
                 .tag(AudioCdnRequestTrace::class.java, trace.copy(hop = hop, stage = stage))
@@ -237,12 +254,7 @@ internal class AudioCdnRedirectInterceptor(
             stage = "redirect-followed"
             // Follow the server's validated target, stripping authorization
             // headers from a cross-origin redirect. Never rewrite its query.
-            val redirected = request.newBuilder().url(target)
-            if (request.url.host != target.host) {
-                redirected.removeHeader("Authorization").removeHeader("Cookie")
-                    .removeHeader("X-Goog-AuthUser").removeHeader("X-Goog-PageId")
-            }
-            request = redirected.build()
+            request = request.forCdnTarget(target)
         }
     }
 

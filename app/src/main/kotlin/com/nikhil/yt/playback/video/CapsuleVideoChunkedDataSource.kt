@@ -14,17 +14,15 @@
  */
 package com.nikhil.yt.playback.video
 
-import android.net.Uri
+import com.nikhil.yt.playback.transport.ProgressiveRangeSource
+import com.nikhil.yt.playback.transport.RangePlan
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.TransferListener
 import java.io.EOFException
 import java.io.IOException
 import java.net.SocketException
 import java.net.SocketTimeoutException
-import com.nikhil.yt.playback.audio.AudioCdnChunkRatePolicy
-import timber.log.Timber
+import com.nikhil.yt.playback.transport.RangeSizePolicy
 
 /** Resume only a peer-reset socket, never 403/410/429, DNS, TLS or a cancelled seek. */
 internal fun isRecoverableVideoSocketReset(failure: IOException): Boolean =
@@ -56,272 +54,36 @@ internal fun isRecoverableVideoReadFailure(failure: IOException, rangeHasProgres
 internal const val CAPSULE_VIDEO_CHUNK_BYTES = 4L * 1024 * 1024
 
 internal class CapsuleVideoChunkedDataSource(
-    private val upstream: DataSource,
-    private val chunkBytes: Long = CAPSULE_VIDEO_CHUNK_BYTES,
-) : DataSource {
-    init {
-        require(chunkBytes > 0L)
-    }
-
-    private data class ByteRange(
-        val start: Long,
-        val end: Long,
-        val total: Long,
-    ) {
-        val size: Long get() = end - start + 1L
-    }
-
-    private var original: DataSpec? = null
-    private var nextPosition = 0L
-    private var bytesLeft = 0L
-    private var chunkLeft = 0L
-    private var resourceLength = 0L
-    private var opened = false
-    private var readResumeAttempted = false
-    private var bytesDeliveredInRange = 0L
-    private var ratePolicy = newRatePolicy()
-
-    private fun newRatePolicy() = AudioCdnChunkRatePolicy(
-        initialChunkBytes = minOf(chunkBytes, 1024L * 1024),
-        reducedChunkBytes = minOf(chunkBytes, 512L * 1024),
-        maximumChunkBytes = chunkBytes,
-        slowReadMs = 30L,
-        slowBps = 256L * 1024,
-        recoveredBps = 1024L * 1024,
-    )
-
-    override fun addTransferListener(transferListener: TransferListener) {
-        upstream.addTransferListener(transferListener)
-    }
-
-    override fun open(dataSpec: DataSpec): Long {
-        check(!opened) { "VIDEO DataSource is already open" }
-        opened = true
-        readResumeAttempted = false
-        bytesDeliveredInRange = 0L
-        ratePolicy = newRatePolicy()
-
-        // Preserve native short-stream playback and pre-windowed signed URLs.
-        // A URL with its own range query cannot be sliced beyond that window.
-        if (
-            (dataSpec.length != C.LENGTH_UNSET.toLong() && dataSpec.length <= chunkBytes) ||
-            runCatching { dataSpec.uri.getQueryParameter("range") }.getOrNull() != null
-        ) {
-            return upstream.open(dataSpec)
+    upstream: DataSource,
+    chunkBytes: Long = CAPSULE_VIDEO_CHUNK_BYTES,
+    currentNetworkIdentity: () -> Long? = { null },
+) : ProgressiveRangeSource(
+    upstream = upstream,
+    planFor = { spec ->
+        if (spec.length != C.LENGTH_UNSET.toLong() && spec.length <= chunkBytes) null
+        else {
+            val first = minOf(chunkBytes, 1024L * 1024)
+            RangePlan(first, RangeSizePolicy(
+                initialChunkBytes = first,
+                reducedChunkBytes = minOf(chunkBytes, 512L * 1024),
+                maximumChunkBytes = chunkBytes,
+                slowReadMs = 30L,
+                slowBps = 256L * 1024,
+                recoveredBps = 1024L * 1024,
+            ), requireResponseRange = true)
         }
-
-        val firstLength =
-            if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
-                minOf(chunkBytes, 1024L * 1024)
-            } else {
-                minOf(chunkBytes, dataSpec.length, 1024L * 1024)
-            }
-
-        val firstSpec =
-            dataSpec.buildUpon()
-                .setLength(firstLength)
-                .build()
-
-        try {
-            upstream.open(firstSpec)
-            val range = parseRange(upstream.responseHeaders)
-
-            if (range == null || range.start != dataSpec.position) {
-                if (dataSpec.uri.host?.endsWith(".googlevideo.com", ignoreCase = true) == true || range != null) {
-                    // Do not turn a refused/malformed YouTube range into the
-                    // unbounded whole-file request that stalled large clips.
-                    throw IOException("VIDEO CDN refused the bounded byte range")
-                }
-                // Some hosts ignore Range. Rather than inventing a file size or
-                // making Media3 interpret the first 4 MiB as the entire file,
-                // revert to its unmodified streaming behaviour for this URL.
-                upstream.close()
-                return upstream.open(dataSpec)
-            }
-
-            val available = range.total - dataSpec.position
-            if (available <= 0L) {
-                throw EOFException("VIDEO CDN range starts past the resource")
-            }
-            val expected =
-                if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
-                    available
-                } else {
-                    dataSpec.length
-                }
-
-            if (expected > available) {
-                throw EOFException("VIDEO CDN cannot satisfy requested resource length")
-            }
-            if (range.size > firstLength || range.size > expected) {
-                throw IOException("VIDEO CDN returned unexpected first byte range")
-            }
-
-            original = dataSpec
-            resourceLength = range.total
-            nextPosition = dataSpec.position
-            bytesLeft = expected
-            chunkLeft = range.size
-            return expected
-        } catch (failure: Throwable) {
-            runCatching { upstream.close() }
-            original = null
-            throw failure
-        }
-    }
-
-    private fun openNextChunk() {
-        val request = requireNotNull(original)
-        val length = minOf(bytesLeft, ratePolicy.onChunkComplete())
-        val nextSpec =
-            request.buildUpon()
-                .setPosition(nextPosition)
-                .setLength(length)
-                .build()
-
-        upstream.open(nextSpec)
-        val range = parseRange(upstream.responseHeaders)
-        if (range == null || range.start != nextPosition ||
-            range.size > length || range.size <= 0L || range.total != resourceLength
-        ) {
-            throw IOException("VIDEO CDN did not honor continuation byte range")
-        }
-        chunkLeft = range.size
-        readResumeAttempted = false
-        bytesDeliveredInRange = 0L
-    }
-
-    /**
-     * A long VIDEO response can be reset after valid bytes were already cached.
-     * Reopen only the missing part of the current bounded Range once, keeping
-     * its signed URL, representation, cache key and decoder intact. This is a
-     * transport reconnect, never an extractor/client/bot-guard retry.
-     */
-    private fun readWithOneSocketResume(buffer: ByteArray, offset: Int, length: Int): Int {
-        try {
-            val read = upstream.read(buffer, offset, length)
-            if (read == C.RESULT_END_OF_INPUT && chunkLeft > 0L) throw EOFException("VIDEO range ended early")
-            return read
-        } catch (failure: IOException) {
-            val source = original ?: throw failure
-            if (readResumeAttempted || chunkLeft <= 0L ||
-                !isRecoverableVideoReadFailure(failure, bytesDeliveredInRange > 0L)
-            ) throw failure
-            readResumeAttempted = true
-            val remaining = source.buildUpon()
-                .setPosition(nextPosition)
-                .setLength(chunkLeft)
-                .build()
-            try {
-                upstream.close()
-            } catch (closeFailure: IOException) {
-                failure.addSuppressed(closeFailure)
-            }
-            try {
-                upstream.open(remaining)
-                val range = parseRange(upstream.responseHeaders)
-                if (range == null || range.start != nextPosition ||
-                    range.total != resourceLength || range.size != chunkLeft
-                ) {
-                    throw IOException("VIDEO CDN resume returned incompatible Content-Range")
-                }
-                Timber.tag("CapsuleVideo").i(
-                    "video-range-resume position=%d remainingBytes=%d reason=%s",
-                    nextPosition, chunkLeft, failure.javaClass.simpleName,
-                )
-                return upstream.read(buffer, offset, length)
-            } catch (retryFailure: IOException) {
-                retryFailure.addSuppressed(failure)
-                throw retryFailure
-            }
-        }
-    }
-
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        require(offset >= 0 && length >= 0 && offset <= buffer.size - length)
-        if (length == 0) return 0
-        if (original == null) {
-            val read = upstream.read(buffer, offset, length)
-            if (read == 0) throw IOException("VIDEO CDN returned zero bytes for a non-empty read")
-            return read
-        }
-        if (bytesLeft == 0L) return C.RESULT_END_OF_INPUT
-
-        if (chunkLeft == 0L) {
-            upstream.close()
-            openNextChunk()
-        }
-
-        val requested = minOf(length.toLong(), chunkLeft).toInt()
-        val resumedBefore = readResumeAttempted
-        val readStarted = System.nanoTime()
-        val count = readWithOneSocketResume(buffer, offset, requested)
-        if (readResumeAttempted == resumedBefore) {
-            ratePolicy.observeRead(requested, count, (System.nanoTime() - readStarted) / 1_000_000L)
-        }
-        if (count == C.RESULT_END_OF_INPUT) {
-            throw EOFException(
-                "VIDEO CDN ended a bounded request early (remaining=$chunkLeft)",
-            )
-        }
-        // A zero-length non-empty read violates Media3's contract and
-        // can hot-loop its loader without making progress.
-        if (count == 0) throw IOException("VIDEO CDN returned zero bytes for a non-empty read")
-
-        if (count > 0) {
-            nextPosition += count
-            bytesLeft -= count
-            chunkLeft -= count
-            bytesDeliveredInRange += count
-        }
-        return count
-    }
-
-    override fun getUri(): Uri? = upstream.uri
-
-    override fun getResponseHeaders(): Map<String, List<String>> =
-        upstream.responseHeaders
-
-    override fun close() {
-        opened = false
-        readResumeAttempted = false
-        bytesDeliveredInRange = 0L
-        original = null
-        nextPosition = 0L
-        bytesLeft = 0L
-        chunkLeft = 0L
-        resourceLength = 0L
-        // Media3 must be able to close after a failed open as well.
-        upstream.close()
-    }
-
-    private fun parseRange(headers: Map<String, List<String>>): ByteRange? {
-        val header =
-            headers.entries.firstOrNull { it.key.equals("Content-Range", true) }
-                ?.value?.firstOrNull()
-                ?.trim()
-                ?: return null
-        val match = CONTENT_RANGE_REGEX.matchEntire(header) ?: return null
-        val start = match.groupValues[1].toLongOrNull() ?: return null
-        val end = match.groupValues[2].toLongOrNull() ?: return null
-        val total = match.groupValues[3].toLongOrNull() ?: return null
-        if (end < start || total <= end) return null
-        return ByteRange(start, end, total)
-    }
+    },
+    networkIdentity = currentNetworkIdentity,
+    canResume = ::isRecoverableVideoReadFailure,
+) {
+    init { require(chunkBytes > 0L) }
 
     internal class Factory(
         private val upstreamFactory: DataSource.Factory,
         private val chunkBytes: Long = CAPSULE_VIDEO_CHUNK_BYTES,
+        private val currentNetworkIdentity: () -> Long? = { null },
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
-            CapsuleVideoChunkedDataSource(
-                upstreamFactory.createDataSource(),
-                chunkBytes,
-            )
-    }
-
-    private companion object {
-        val CONTENT_RANGE_REGEX =
-            Regex("""bytes\s+(\d+)-(\d+)/(\d+)""", RegexOption.IGNORE_CASE)
+            CapsuleVideoChunkedDataSource(upstreamFactory.createDataSource(), chunkBytes, currentNetworkIdentity)
     }
 }

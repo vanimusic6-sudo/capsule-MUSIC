@@ -5,6 +5,17 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VideoStreamCacheTest {
+    @Test fun accountOrNetworkChangeRetiresCachedAndInFlightLinks() {
+        var context = "first"
+        val cache = VideoStreamCache<String>(2, { context }) { true }
+        val generation = cache.generation()
+        org.junit.Assert.assertTrue(cache.put("a", "key", "old", generation))
+        context = "second"
+        org.junit.Assert.assertNull(cache.latest("a"))
+        org.junit.Assert.assertFalse(cache.put("a", "key", "late", generation))
+        org.junit.Assert.assertNull(cache["key"])
+    }
+
     @Test fun reusedKeyNeverLeaksAnotherVideosStream() {
         val cache = VideoStreamCache<Int>(3) { true }
         cache.put("track-one", "shared", 101)

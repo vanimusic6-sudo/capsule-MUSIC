@@ -6,6 +6,20 @@ import java.io.IOException
 import java.util.UUID
 
 class CapsuleVideoRoutesTest {
+    @Test fun productionParserStopsAtExplicitDenial() {
+        for (reason in listOf("HTTP 403 Forbidden", "Sign in to confirm that you're not a bot")) {
+            var attempts = 0
+            val failure = runCatching {
+                resolveVideoRoutes(parserOnly = true) {
+                    attempts++
+                    throw java.io.IOException(reason)
+                }
+            }.exceptionOrNull()
+            org.junit.Assert.assertTrue(failure is CapsuleVideoRoutesException)
+            org.junit.Assert.assertEquals(1, attempts)
+        }
+    }
+
     @Test fun coldParserGetsOneLongerBudgetButNetworkFallbackIsBounded() {
         val health = CapsuleVideoRouteHealth()
         assertEquals(5_200L, health.budgetFor(CapsuleVideoRoute.PIPEPIPE, true, false))

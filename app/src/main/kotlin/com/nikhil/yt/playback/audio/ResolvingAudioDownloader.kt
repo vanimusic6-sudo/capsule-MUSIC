@@ -36,8 +36,6 @@ internal class ResolvingAudioDownloader(
 ) : Downloader {
     private val cancellation = SupervisorJob()
     @Volatile private var delegate: Downloader? = null
-    private var resolved: CapsuleAudioEngine.PlaybackData? = null
-    private var expiresAtNs = 0L
     private var recoveries = 0
     private var terminalRefusal: IOException? = null
 
@@ -125,12 +123,8 @@ internal class ResolvingAudioDownloader(
             terminalRefusal?.let { throw it }
             while (true) {
                 checkActive()
-                val playback = resolved?.takeIf { System.nanoTime() < expiresAtNs }
-                    ?: resolve().also {
-                        resolved = it
-                        expiresAtNs = System.nanoTime() +
-                            (it.streamExpiresInSeconds.toLong() - 15L).coerceAtLeast(0L) * 1_000_000_000L
-                    }
+                // The caller owns the session-, network- and quality-bound URL cache.
+                val playback = resolve()
                 startArtwork()
                 checkActive()
                 AudioCacheIdentity.prepareDownload(
@@ -152,37 +146,20 @@ internal class ResolvingAudioDownloader(
                     val status = generateSequence(failure as Throwable?) { it.cause }.take(12)
                         .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
-                    val denied = status in setOf(401, 403, 410)
-                    if (status in setOf(401, 403)) {
-                        recover(playback, failure)
-                        terminalRefusal = failure
-                        resolved = null
-                        expiresAtNs = 0L
-                        throw failure
-                    }
-                    // A temporary global cooldown is not a permanent bad file.
-                    // Admission waits on the next attempt; no requests during it.
                     if (failure.audioAccessStopOrNull() != null) throw failure
-                    if (recoveries >= MAX_RECOVERIES) {
-                        if (denied) {
-                            recover(playback, failure) // retire external resume cache as well
-                            resolved = null
-                            expiresAtNs = 0L
-                            terminalRefusal = failure
-                        }
+                    if (status == 401 || status == 403 || status == 429) {
+                        recover(playback, failure)
+                        if (status != 429) terminalRefusal = failure
                         throw failure
                     }
-                    if (!recover(playback, failure)) {
-                        if (denied) {
-                            resolved = null
-                            expiresAtNs = 0L
+                    if (recoveries >= MAX_RECOVERIES || !recover(playback, failure)) {
+                        if (status == 410) {
+                            if (recoveries >= MAX_RECOVERIES) recover(playback, failure)
                             terminalRefusal = failure
                         }
                         throw failure
                     }
                     recoveries++
-                    resolved = null
-                    expiresAtNs = 0L
                 } finally {
                     delegate = null
                 }

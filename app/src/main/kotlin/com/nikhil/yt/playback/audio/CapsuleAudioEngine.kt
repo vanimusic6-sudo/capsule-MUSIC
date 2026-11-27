@@ -44,7 +44,9 @@ object CapsuleAudioEngine {
         val rangeChunkSizeBytes: Long = 0L,
         /** Offline downloads stay on direct streams until SABR renewal is validated. */
         val sabrBootstrap: SabrBootstrap? = null,
-    )
+    ) {
+        override fun toString() = "PlaybackData(itag=${format.itag})"
+    }
 
     fun prioritizePlayback(mediaId: String) = CapsuleInnerTubeXPlayer.prioritizePlayback(mediaId)
 

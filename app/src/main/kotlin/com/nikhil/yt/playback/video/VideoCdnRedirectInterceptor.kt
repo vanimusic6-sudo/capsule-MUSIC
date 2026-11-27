@@ -1,6 +1,7 @@
 package com.nikhil.yt.playback.video
 
 import com.nikhil.yt.innertube.video.VideoStreamValidation
+import com.nikhil.yt.playback.audio.forCdnTarget
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -56,7 +57,7 @@ internal class VideoCdnRedirectInterceptor(
         val shortcut = memory.get(network, origin.url)?.takeUnless {
             VideoRejectedLinks.isRejected(it.toString())
         }
-        var current = if (shortcut != null) clean.newBuilder().url(shortcut).build() else clean
+        var current = if (shortcut != null) clean.forCdnTarget(shortcut) else clean
         var usingShortcut = shortcut != null
         val visited = mutableSetOf<HttpUrl>()
         repeat(6) {
@@ -73,9 +74,7 @@ internal class VideoCdnRedirectInterceptor(
                 if (usingShortcut) memory.forget(network, origin.url)
                 throw failure
             }
-            if (usingShortcut && response.code in setOf(403, 404, 410)) {
-                if (response.code == 403 || response.code == 410)
-                    VideoRejectedLinks.reject(current.url.toString())
+            if (usingShortcut && response.code == 404) {
                 response.close()
                 memory.forget(network, origin.url)
                 usingShortcut = false
@@ -85,6 +84,7 @@ internal class VideoCdnRedirectInterceptor(
             if (response.code !in setOf(301, 302, 303, 307, 308)) {
                 if (response.code == 206 && response.header("Content-Range") != null &&
                     networkIdentity() == network) memory.remember(network, origin.url, current.url)
+                if (response.code == 403 || response.code == 410) VideoRejectedLinks.reject(current.url.toString())
                 if (!response.isSuccessful) memory.forget(network, origin.url)
                 return response
             }
@@ -95,7 +95,7 @@ internal class VideoCdnRedirectInterceptor(
             }
             if (com.nikhil.yt.utils.GlobalLog.isEnabled)
                 Timber.tag("CapsuleVideo").d("video-cdn-redirect from=%s to=%s", current.url.host, target.host)
-            current = clean.newBuilder().url(target).build()
+            current = current.forCdnTarget(target)
             usingShortcut = false
         }
         throw IOException("VIDEO CDN redirect limit")

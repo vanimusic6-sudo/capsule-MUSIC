@@ -102,6 +102,8 @@ object YouTubeVideoResolver {
     val requestHeaders: Map<String, String> = emptyMap(),
     val durationMs: Long? = null,
     ) {
+        override fun toString() = "ResolvedVideo(itag=${videoFormat.itag}, delivery=$delivery)"
+
         val streamUrl: String
             get() = videoStreamUrl
 
@@ -124,7 +126,10 @@ object YouTubeVideoResolver {
         cause: Throwable? = null,
     ) : IllegalStateException(message, cause)
 
-    private val cache = VideoStreamCache<ResolvedVideo>(maxEntries = 64) {
+    private val cache = VideoStreamCache<ResolvedVideo>(
+        maxEntries = 64,
+        currentContext = com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer::sessionIdentity,
+    ) {
         it.expiresAtMs > System.currentTimeMillis() + CACHE_SAFETY_MS &&
             !VideoRejectedLinks.isRejected(it.videoStreamUrl) &&
             it.audioStreamUrl?.let(VideoRejectedLinks::isRejected) != true
@@ -252,7 +257,7 @@ object YouTubeVideoResolver {
         // Only a real clip lookup has a useful parallel window. An already
         // known exact clip skips this warmup and goes straight to extraction.
         if (!originalVideo && knownClipId == null) startProcessWarmup()
-        val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}:$identity"
+        val requestKey = "${cache.generation()}:$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}:$identity"
         return songResolves.run(requestKey) {
             val result =
                 try {
@@ -364,6 +369,7 @@ object YouTubeVideoResolver {
                 "VIDEO resolve queue clip=%s waitMs=%d", videoId, waitMs,
             )
             if (!refresh) cache[key]?.let { return@withLock capsuleVideoBindSource(it, sourceMediaId) }
+            val generation = cache.generation()
             val admissionStartNs = System.nanoTime()
             beforeMetadataRequest()
             val admissionWaitMs = (System.nanoTime() - admissionStartNs).coerceAtLeast(0L) / 1_000_000L
@@ -385,7 +391,7 @@ object YouTubeVideoResolver {
                 webReserve()
             } else {
                 try {
-                    callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+                    callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh, generation)
                 } catch (failure: VideoBackendException) {
                     // Respect rate limits, confirmed bot challenges and unavailable content.
                     // The reserve is not an authorization or age-restriction bypass.
@@ -405,7 +411,9 @@ object YouTubeVideoResolver {
             if (VideoRejectedLinks.isRejected(resolved.videoStreamUrl) ||
                 resolved.audioStreamUrl?.let(VideoRejectedLinks::isRejected) == true
             ) throw java.io.IOException("VIDEO resolver returned a previously refused link")
-            cache.put(videoId, key, resolved)
+            if (!cache.put(videoId, key, resolved, generation)) {
+                throw java.io.IOException("Video session changed during extraction")
+            }
             resolved
         }
     }
@@ -416,6 +424,7 @@ object YouTubeVideoResolver {
         muxedOnly: Boolean,
         failedBackend: String? = null,
         refresh: Boolean = false,
+        generation: Long,
     ): CapsuleResolvedVideo = withContext(Dispatchers.IO) {
         val context = App.instance.applicationContext
         val authority = "${context.packageName}.capsule.video.extractor"
@@ -426,6 +435,7 @@ object YouTubeVideoResolver {
             Bundle().apply {
                 putString(CapsuleVideoIpc.EXTRA_REQUEST_ID, requestId)
                 putString(CapsuleVideoIpc.EXTRA_SESSION_KEY, "$processSessionKey:$guardEpoch")
+                putString(CapsuleVideoIpc.EXTRA_INVENTORY_SCOPE, "$processSessionKey:$generation")
                 putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, videoId)
                 putString(CapsuleVideoIpc.EXTRA_QUALITY, CapsuleVideoIpc.qualityToWire(quality))
                 putBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, muxedOnly)

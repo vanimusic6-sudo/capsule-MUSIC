@@ -27,7 +27,7 @@ internal class PoTokenSession(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
     private val timeoutMs: Long = 8_000L,
 ) {
-    private data class Prepared(val visitor: String, val minter: PoTokenMinter, val token: String)
+    private class Prepared(val visitor: String, val minter: PoTokenMinter, val token: String)
     private val lock = Mutex()
     @Volatile private var prepared: Prepared? = null
     @Volatile private var failedVisitor: String? = null

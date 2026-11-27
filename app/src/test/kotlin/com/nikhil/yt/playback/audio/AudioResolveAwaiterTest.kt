@@ -24,6 +24,18 @@ class AudioResolveAwaiterTest {
         assertEquals(2, calls)
     }
 
+    @Test fun repeatedSharedCancellationEndsTheLoadWithoutPolling() = runTest {
+        var calls = 0
+        val failure = runCatching {
+            awaitForegroundAudioResolve<Int>({ true }) {
+                calls++
+                Result.failure(CancellationException("Shared resolve cancelled"))
+            }
+        }.exceptionOrNull()
+        assertTrue(failure is CancellationException)
+        assertEquals(2, calls)
+    }
+
     @Test fun abandonedTrackDoesNotRestartOrBecomeAPlaybackException() = runTest {
         val cancellation = CancellationException("Track is no longer near playback")
         var calls = 0

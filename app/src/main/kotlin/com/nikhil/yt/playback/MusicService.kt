@@ -5299,7 +5299,7 @@ class MusicService :
             .readTimeout(12, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
-            .retryOnConnectionFailure(true)
+            .retryOnConnectionFailure(false)
             .addInterceptor { chain ->
                 chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
             }
@@ -5325,7 +5325,9 @@ class MusicService :
                 // the existing AUDIO cache/stream factory is untouched.
                 // HLS already loads bounded media segments and manifests.
                 // A progressive Range wrapper must never wrap an m3u8 file.
-                if (boundedProgressive) CapsuleVideoChunkedDataSource.Factory(httpUpstream) else httpUpstream,
+                if (boundedProgressive) CapsuleVideoChunkedDataSource.Factory(httpUpstream) {
+                    connectivityManager.activeNetwork?.networkHandle
+                } else httpUpstream,
             )
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
     }

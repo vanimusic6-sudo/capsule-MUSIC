@@ -126,7 +126,7 @@ class AudioCacheIdentityTest {
         assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
     }
 
-    @Test fun transientFailureReusesResolvedUrlAndPartialBytes() {
+    @Test fun media3RetryRechecksTheSessionAndResumesPartialBytes() {
         val fixture = CacheFixture()
         var resolves = 0
         var transfers = 0
@@ -144,7 +144,7 @@ class AudioCacheIdentityTest {
             })
         assertThrows(java.io.IOException::class.java) { downloader.download(null) }
         downloader.download(null)
-        assertEquals(1, resolves)
+        assertEquals(2, resolves)
         assertTrue(AudioCacheIdentity.isComplete(fixture.cache, "track"))
     }
 

@@ -82,6 +82,15 @@ object CapsuleNewPipeExtractor {
         initialized.set(true)
     }
 
+    private var inventoryScope: String? = null
+
+    private fun scopeInventory(scope: String) {
+        if (inventoryScope != scope) {
+            recentMetadata.clear()
+            inventoryScope = scope
+        }
+    }
+
     @Synchronized
     fun invalidate(videoId: String) {
         recentMetadata.remove(videoId)
@@ -92,7 +101,9 @@ object CapsuleNewPipeExtractor {
         videoId: String,
         quality: CapsuleNewPipeQuality,
         muxedOnly: Boolean = false,
+        scope: String? = null,
     ): CapsuleNewPipeResolved {
+        scope?.let(::scopeInventory)
         initializeIfNeeded()
 
         val id = videoId.trim()
@@ -186,6 +197,7 @@ object CapsuleNewPipeExtractor {
         onAttempt: (String, Long, Boolean) -> Unit = { _, _, _ -> },
         onRouteFailure: (String, Throwable) -> Unit = { _, _ -> },
         parserOnly: Boolean = false,
+        inventoryScope: String? = null,
     ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend, health = routeHealth, expectedVideoId = videoId,
         parserOnly = parserOnly,
         onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) },
@@ -195,7 +207,7 @@ object CapsuleNewPipeExtractor {
             CapsuleVideoRoute.VISIONOS -> CapsuleDirectVideoExtractor.resolve(videoId, quality, muxedOnly)
             CapsuleVideoRoute.PIPEPIPE -> CapsulePipePipeExtractor.resolve(videoId, quality, muxedOnly)
             CapsuleVideoRoute.ANDROID_REEL -> CapsuleDirectVideoExtractor.resolveReel(videoId, quality)
-            CapsuleVideoRoute.NEWPIPE -> resolve(videoId, quality, muxedOnly)
+            CapsuleVideoRoute.NEWPIPE -> resolve(videoId, quality, muxedOnly, inventoryScope)
         }
     }
 
@@ -236,7 +248,7 @@ object CapsuleNewPipeExtractor {
             -> CapsuleNewPipeFailure.UNAVAILABLE
 
             YouTubeFailureKind.TRANSIENT -> CapsuleNewPipeFailure.NETWORK
-            YouTubeFailureKind.FORBIDDEN -> CapsuleNewPipeFailure.EXTRACTOR
+            YouTubeFailureKind.FORBIDDEN -> CapsuleNewPipeFailure.UNAVAILABLE
             YouTubeFailureKind.NONE ->
                 when {
                     throwable is ReCaptchaException || throwable is dev.maxrave.pipepipe.extractor.exceptions.ReCaptchaException -> CapsuleNewPipeFailure.BOT_BLOCKED

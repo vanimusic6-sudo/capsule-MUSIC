@@ -14,7 +14,10 @@ import timber.log.Timber
 import java.io.IOException
 
 /** Observe the wire response before InnerTubeX retries it or discards playability reasons. */
-internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean = false) : Interceptor {
+internal class CapsuleAudioRequestInterceptor(
+    private val guardStreams: Boolean = false,
+    private val access: AudioAccessDiscipline = AudioAccessGate.discipline,
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val host = request.url.host
@@ -27,10 +30,10 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
             // OkHttp interceptors must throw IOException, not an uncaught runtime exception.
             throw IOException(it.message, it)
         }
-        AudioAccessGate.check()
+        access.stopFor()?.let { throw it }
         val response = chain.proceed(request)
         if (response.code == 403 || response.code == 401) {
-            if (response.code == 403) AudioAccessGate.discipline.recordWireRefusal()
+            if (response.code == 403) access.recordWireRefusal()
             // Preserve the HTTP response for Media3; metadata callers receive a
             // typed terminal decision before a library can obscure the reason.
             if (host != "googlevideo.com" && !host.endsWith(".googlevideo.com")) {
@@ -49,18 +52,18 @@ internal class CapsuleAudioRequestInterceptor(private val guardStreams: Boolean 
 
         when (signal) {
             YouTubeFailureKind.RATE_LIMITED -> {
-                AudioAccessGate.discipline.recordRateLimit(response.header("Retry-After"))
+                access.recordRateLimit(response.header("Retry-After"))
                 CapsulePlaybackSafety.markHttpStatusFailure(429)
             }
             // Preserve the challenge even if InnerTubeX later summarizes it as NO_PLAYABLE_STREAM.
             // The serialized resolver knows which profile caused it and owns safe escalation.
             YouTubeFailureKind.BOT_CHECK -> {
-                AudioAccessGate.discipline.recordChallenge()
+                access.recordChallenge()
                 CapsulePlaybackSafety.noteWireBotCheck()
             }
             else -> Unit
         }
-        // HTTP 429 has already opened the global gate. Bot-check escalation is profile-aware.
+        // Surface the wire response once. The next network call observes the shared gate.
         return response
     }
 
