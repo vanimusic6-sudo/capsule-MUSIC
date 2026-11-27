@@ -103,11 +103,11 @@ internal fun playerSceneShouldInterceptTouch(
 // automatically reversed; there is no direction-dependent visual jump.
 internal const val PLAYER_MINI_FADE_END = 0.69f
 // Navigation clears the dock while the destination is still nearly transparent.
-internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0.025f, 0.27f)
+internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0.025f, 0.22f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
     1f - playerSoftPhase(progress, 0.39f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float =
-    playerSoftPhase(progress, 0.14f, 0.52f)
+    playerSoftPhase(progress, 0.075f, 0.52f)
 
 /**
  * A small landing accent driven by actual closing velocity. It is zero at
