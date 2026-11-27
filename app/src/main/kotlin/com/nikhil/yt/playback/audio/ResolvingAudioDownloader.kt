@@ -147,9 +147,11 @@ internal class ResolvingAudioDownloader(
                     return
                 } catch (failure: IOException) {
                     checkActive()
+                    // A subsequent Media3 download() must not reuse a failed URL.
+                    resolved = null
+                    expiresAtNs = 0L
                     if (recoveries >= MAX_RECOVERIES || !recover(playback, failure)) throw failure
                     recoveries++
-                    resolved = null
                 } finally {
                     delegate = null
                 }

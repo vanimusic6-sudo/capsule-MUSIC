@@ -749,6 +749,11 @@ class MusicService :
                 if (!isRelevant()) {
                     throw kotlinx.coroutines.CancellationException("Track no longer wanted before AUDIO CDN open")
                 }
+                if (openContext != null && playbackUrlCache.isRejected(mediaId, dataSpec.uri.toString())) {
+                    throw com.nikhil.yt.playback.audio.AudioResolveLoadException(
+                        java.io.IOException("Previously refused signed audio link"),
+                    )
+                }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw InterruptedIOException("Stale AUDIO CDN open suppressed before request").apply {
@@ -786,7 +791,7 @@ class MusicService :
                 },
             ) {
                 withContext(Dispatchers.Main.immediate) {
-                    if (loaderDemand) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
+                    if (loaderDemand || audioResolveCoordinator.hasLoaderDemand(mediaId)) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
                 }
             }
             val selection = playbackContext()
@@ -832,7 +837,7 @@ class MusicService :
                     // may still finish successfully. Do not publish its URL just because its
                     // id is again the queue's next item during rapid backwards scrubbing.
                     val relevantAfterResponse = withContext(Dispatchers.Main.immediate) {
-                        if (loaderDemand) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
+                        if (loaderDemand || audioResolveCoordinator.hasLoaderDemand(mediaId)) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
                     }
                     if (!relevantAfterResponse) {
                         throw kotlinx.coroutines.CancellationException(
@@ -900,9 +905,20 @@ class MusicService :
 
     // Media3 prepares the next period before currentMediaItem changes, including while paused.
     // Treating that real demand like optional prefetch caused 1–5 ms cancellation/retry loops.
+    // Real Media3 demand may reach the second future period; speculative work stays one ahead.
+    private fun audioLoaderUpcomingIds(): List<String> {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty) return emptyList()
+        val first = player.nextMediaItemIndex
+        if (first == C.INDEX_UNSET || first !in 0 until timeline.windowCount) return emptyList()
+        val second = timeline.getNextWindowIndex(first, player.repeatMode, player.shuffleModeEnabled)
+        return listOf(first, second).distinct().filter { it in 0 until player.mediaItemCount }
+            .map { player.getMediaItemAt(it).mediaId }.filter { it.isNotBlank() }
+    }
+
     private fun isAudioLoaderSelectionRelevant(mediaId: String): Boolean =
         isAudioLoaderSelectionRelevant(
-            mediaId, player.currentMediaItem?.mediaId, upcomingAudioIds(), isCurrentCapsuleVideoItem(),
+            mediaId, player.currentMediaItem?.mediaId, audioLoaderUpcomingIds(), isCurrentCapsuleVideoItem(),
         )
 
     private fun prefetchUpcomingAudio() {
@@ -954,7 +970,7 @@ class MusicService :
          * could keep contacting YouTube for tracks no longer near playback.
          * Keep only the current item and the one useful look-ahead item.
          */
-        audioResolveCoordinator.cancelStaleExcept(relevantIds).forEach { mediaId ->
+        audioResolveCoordinator.cancelStaleExcept(relevantIds + audioLoaderUpcomingIds()).forEach { mediaId ->
             Timber.tag(CAPSULE_RESOLVE_TAG).i(
                 "prefetch cancel stale id=%s",
                 mediaId,
@@ -4521,7 +4537,31 @@ class MusicService :
 
 
 
+    private var startupTraceSelection: Pair<String, Int>? = null
+    private var startupTraceStartedAtMs = 0L
+
+    private fun updateStartupTrace() {
+        if (!GlobalLog.isEnabled || !player.playWhenReady || isCurrentCapsuleVideoItem()) {
+            startupTraceSelection = null
+            return
+        }
+        val id = player.currentMediaItem?.mediaId ?: return
+        val selection = id to player.currentMediaItemIndex
+        if (startupTraceSelection != selection) startupTraceSelection = null
+        if (player.playbackState == Player.STATE_BUFFERING && startupTraceSelection == null) {
+            startupTraceSelection = selection
+            startupTraceStartedAtMs = android.os.SystemClock.elapsedRealtime()
+        } else if (player.playbackState == Player.STATE_READY && startupTraceSelection == selection) {
+            Timber.tag("PlaybackHealth").i(
+                "audio-ready-total id=%s elapsedMs=%d",
+                id, android.os.SystemClock.elapsedRealtime() - startupTraceStartedAtMs,
+            )
+            startupTraceSelection = null
+        }
+    }
+
     override fun onEvents(player: Player, events: Player.Events) {
+        updateStartupTrace()
         if (events.containsAny(
                 Player.EVENT_PLAY_WHEN_READY_CHANGED,
                 Player.EVENT_MEDIA_ITEM_TRANSITION,
@@ -5038,8 +5078,9 @@ class MusicService :
                 }
 
                 if (recoveryAction == AudioCdnRecoveryAction.SKIP_TRACK) {
+                    audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
                     Timber.tag("PlaybackRecovery").w(
-                        "cdn-failover-exhausted id=%s status=%s; next item",
+                        "cdn-failover-exhausted id=%s status=%s; terminal policy",
                         currentMediaId, httpStatusCode?.toString() ?: "transport",
                     )
                     handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
@@ -5047,6 +5088,7 @@ class MusicService :
                 }
                 val retryDelay = playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId)
                 if (retryDelay == null) {
+                    audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
                     handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
                     return
                 }
@@ -5092,7 +5134,10 @@ class MusicService :
                 // A genuinely different client must issue its OWN /player
                 // request and signed URL. Changing only the headers on the old
                 // URL would not change the client that produced the stream.
-                val failedClient = playbackUrlCache.get(currentMediaId)?.streamClient
+                val failedClient = (generateSequence(error as Throwable?) { it.cause }
+                    .take(12).filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                    .firstOrNull()?.dataSpec?.customData as? AudioCdnOpenContext)?.streamClient
+                    ?: playbackUrlCache.get(currentMediaId)?.streamClient
                 CapsuleAudioEngine.markStreamClientFailed(
                     videoId = currentMediaId,
                     clientKey = failedClient,
@@ -5240,6 +5285,15 @@ class MusicService :
                         upstreamFactory =
                             DefaultDataSource.Factory(this, OkHttpDataSource.Factory(audioHttpClient)),
                         beforeNetworkOpen = ::awaitAudioNetworkOpenPermit,
+                        onRejectedLink = { spec, status ->
+                            val context = spec.customData as? AudioCdnOpenContext
+                            if (context != null) {
+                                playbackUrlCache.reject(context.mediaId, spec.uri.toString())
+                                Timber.tag("PlaybackRecovery").i(
+                                    "cdn-link-retired id=%s status=%d", context.mediaId, status,
+                                )
+                            }
+                        },
                         onFirstAudioBytes = { dataSpec ->
                             val context = dataSpec.customData as? AudioCdnOpenContext
                             if (context != null) {
@@ -5472,6 +5526,11 @@ class MusicService :
         source: AudioCdnOpenSource,
     ): androidx.media3.datasource.DataSpec {
         val mediaId = requireNotNull(dataSpec.key)
+        if (playback.sabrBootstrap == null && playbackUrlCache.isRejected(mediaId, playback.streamUrl)) {
+            throw com.nikhil.yt.playback.audio.AudioResolveLoadException(
+                java.io.IOException("Resolver returned a previously refused audio link"),
+            )
+        }
         // Avoid cross-transport partial cache spans and accidental Direct
         // cache hits in the forced SABR experiment.
         val key = AudioCacheIdentity.key(mediaId, playback) +

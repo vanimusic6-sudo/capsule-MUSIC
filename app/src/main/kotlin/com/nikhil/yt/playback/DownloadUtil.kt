@@ -282,7 +282,7 @@ constructor(
                         status == 403 || status == 410 -> {
                             // Quarantine a refused source for this download alone;
                             // retrying its same signed CDN link wastes the recovery budget.
-                            resumeUrls.remove(request.id)
+                            resumeUrls.reject(request.id, playback.streamUrl)
                             CapsuleAudioEngine.markDownloadStreamClientFailed(
                                 request.id, playback.streamClient, status,
                             )

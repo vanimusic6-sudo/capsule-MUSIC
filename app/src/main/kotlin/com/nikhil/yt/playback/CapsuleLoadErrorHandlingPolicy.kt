@@ -8,6 +8,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import com.nikhil.yt.playback.audio.sabrTransportFailureOrNull
 import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
+import com.nikhil.yt.playback.audio.isExpectedAudioCdnInterruption
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 
@@ -53,9 +54,12 @@ internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy()
     ): Long {
         // The resolver already exhausted its bounded client plan. Repeating it
         // in Loader would multiply requests for an unavailable/restricted track.
-        if (loadErrorInfo.exception is com.nikhil.yt.playback.audio.AudioResolveLoadException) {
+        if (generateSequence(loadErrorInfo.exception as Throwable?) { it.cause }
+                .take(12).any { it is com.nikhil.yt.playback.audio.AudioResolveLoadException }) {
             return C.TIME_UNSET
         }
+        // Obsolete period loads cannot become valid by retrying the same source.
+        if (loadErrorInfo.exception.isExpectedAudioCdnInterruption()) return C.TIME_UNSET
         // The SABR producer has its own bounded UMP retries. Reopening that
         // same failed session through Media3's default Loader retry would add
         // 20 seconds per attempt and prevent hybrid Direct recovery.

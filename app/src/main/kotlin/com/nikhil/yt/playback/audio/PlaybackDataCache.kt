@@ -14,6 +14,29 @@ internal class PlaybackDataCache(
         var deliveredAudioBytes: Boolean = false,
     )
     private val entries = LinkedHashMap<String, Entry>(16, 0.75f, true)
+    // Bounded salted fingerprints, never persistent signed URLs.
+    private val rejected = LinkedHashMap<Pair<String, String>, Long>()
+
+    @Synchronized
+    fun reject(mediaId: String, streamUrl: String) {
+        val key = mediaId to AudioCdnLinkIdentity.ref(streamUrl)
+        rejected.remove(key)
+        rejected[key] = nowMs() + 600_000L
+        while (rejected.size > 256) rejected.remove(rejected.keys.first())
+        if (entries[mediaId]?.data?.streamUrl == streamUrl) entries.remove(mediaId)
+    }
+
+    @Synchronized
+    fun isRejected(mediaId: String, streamUrl: String): Boolean {
+        if (rejected.isEmpty()) return false
+        val key = mediaId to AudioCdnLinkIdentity.ref(streamUrl)
+        val until = rejected[key] ?: return false
+        if (until <= nowMs()) {
+            rejected.remove(key)
+            return false
+        }
+        return true
+    }
 
     @Synchronized
     fun get(mediaId: String, minimumRemainingMs: Long = 5_000L): CapsuleAudioEngine.PlaybackData? =
@@ -66,6 +89,7 @@ internal class PlaybackDataCache(
         data: CapsuleAudioEngine.PlaybackData,
         context: Any? = currentContext(),
     ) {
+        if (data.sabrBootstrap == null && isRejected(mediaId, data.streamUrl)) return
         val now = nowMs()
         entries[mediaId] =
             Entry(
@@ -89,5 +113,5 @@ internal class PlaybackDataCache(
     fun remove(mediaId: String) { entries.remove(mediaId) }
 
     @Synchronized
-    fun clear() { entries.clear() }
+    fun clear() { entries.clear(); rejected.clear() }
 }

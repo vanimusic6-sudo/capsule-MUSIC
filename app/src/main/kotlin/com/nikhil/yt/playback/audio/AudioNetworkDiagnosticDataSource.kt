@@ -162,6 +162,7 @@ internal class AudioNetworkDiagnosticDataSource(
     private val upstream: DataSource,
     private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
     private val onFirstAudioBytes: ((DataSpec) -> Unit)? = null,
+    private val onRejectedLink: ((DataSpec, Int) -> Unit)? = null,
 ) : DataSource {
     private var diagnosticsEnabled = false
     private var startedAtNs = 0L
@@ -215,7 +216,12 @@ internal class AudioNetworkDiagnosticDataSource(
         AudioCdnSessionStats.recordOpen()
 
         diagnosticsEnabled = GlobalLog.isEnabled
-        if (!diagnosticsEnabled) return upstream.open(dataSpec).also { declaredLength = it }
+        if (!diagnosticsEnabled) return try {
+            upstream.open(dataSpec).also { declaredLength = it }
+        } catch (failure: Throwable) {
+            reportRejectedLink(dataSpec, failure)
+            throw failure
+        }
 
         startedAtNs = System.nanoTime()
         openCompletedAtNs = 0L
@@ -263,6 +269,7 @@ internal class AudioNetworkDiagnosticDataSource(
                 )
             }
         } catch (failure: Throwable) {
+            reportRejectedLink(dataSpec, failure)
             val now = System.nanoTime()
             if (failure.isExpectedAudioCdnInterruption()) {
                 Timber.tag(TAG).d(
@@ -320,6 +327,15 @@ internal class AudioNetworkDiagnosticDataSource(
                 }
             }
             throw failure
+        }
+    }
+
+    private fun reportRejectedLink(spec: DataSpec, failure: Throwable) {
+        val status = generateSequence(failure as Throwable?) { it.cause }
+            .take(12).filterIsInstance<InvalidResponseCodeException>()
+            .firstOrNull()?.responseCode
+        if (status == 403 || status == 410) {
+            runCatching { onRejectedLink?.invoke(spec, status) }
         }
     }
 
@@ -517,12 +533,14 @@ internal class AudioNetworkDiagnosticDataSource(
         private val upstreamFactory: DataSource.Factory,
         private val beforeNetworkOpen: ((DataSpec) -> Unit)? = null,
         private val onFirstAudioBytes: ((DataSpec) -> Unit)? = null,
+        private val onRejectedLink: ((DataSpec, Int) -> Unit)? = null,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
             AudioNetworkDiagnosticDataSource(
                 upstream = upstreamFactory.createDataSource(),
                 beforeNetworkOpen = beforeNetworkOpen,
                 onFirstAudioBytes = onFirstAudioBytes,
+                onRejectedLink = onRejectedLink,
             )
     }
 

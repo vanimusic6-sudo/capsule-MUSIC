@@ -38,3 +38,10 @@ Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static aud
 ## Network recovery ownership
 - Network reconnect now retains intent if connectivity drops during the post-prepare grace period, not only during the initial delay. The buffer watchdog sees the full recovery lease, and duplicate errors for an unchanged selection no longer exhaust retry slots while that lease is active. An active rate-limit block does not spend a retry slot.
 - Added virtual-clock regression for duplicate errors, loss/reconnect during grace, and final retry accounting. No new dependencies or third-party source added.
+
+## First device capture (d439da9)
+- 37 CDN opens, 8 refusals, all first requests. Successful and refused requests both use IPv6 with IPv4-issued URLs; no global IPv4 override or TLS changes. Keep HTTP/2 negotiation and route diagnostics.
+- Retire 403/410 at the physical open regardless of diagnostic mode, with bounded 10-minute per-track salted link memory. Reject late publication of the same link; terminal recovery clears URL cache. Verified offline bytes stay intact.
+- Real loader may request second future period; optional prefetch remains one ahead. Shared prefetch observes loader promotion. Stop default retries for obsolete loads and nested terminal resolver errors. Download rejection is tracked independently and failed delegate URLs discarded.
+- SABR empty completion is a failure; first chunk deadline 8s, steady-state deadline unchanged. Add total audio-ready duration across retry-related IDLE events. Age/auth restrictions and rate-limit handling unchanged.
+- Device retest and CI required; no new dependency or third-party code.

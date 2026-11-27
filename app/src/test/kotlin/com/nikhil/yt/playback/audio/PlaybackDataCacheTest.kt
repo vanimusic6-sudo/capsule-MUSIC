@@ -141,4 +141,22 @@ class PlaybackDataCacheTest {
         assertNull(cache.getForPlayback("playing", maxPrefetchedAgeMs = 1_000L))
     }
 
+    @Test fun refusalRetiresOnlyTheExactLinkAndRejectsLatePublication() {
+        var now = 0L
+        val cache = PlaybackDataCache(nowMs = { now })
+        val old = playback()
+        val fresh = old.copy(streamUrl = old.streamUrl + "&sig=new")
+        cache.put("track", old)
+        cache.reject("track", old.streamUrl)
+        assertNull(cache.get("track"))
+        cache.put("track", old)
+        assertNull(cache.get("track"))
+        cache.put("track", fresh)
+        cache.reject("track", old.streamUrl)
+        assertSame(fresh, cache.get("track"))
+        assertTrue(cache.isRejected("track", old.streamUrl))
+        assertFalse(cache.isRejected("different", old.streamUrl))
+        now = 600_001L
+        assertFalse(cache.isRejected("track", old.streamUrl))
+    }
 }

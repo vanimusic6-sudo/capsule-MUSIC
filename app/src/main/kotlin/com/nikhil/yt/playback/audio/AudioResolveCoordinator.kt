@@ -62,6 +62,9 @@ internal class AudioResolveCoordinator<T>(
             shared
         }
 
+    fun hasLoaderDemand(mediaId: String): Boolean =
+        loaderDemands[mediaId]?.isCompleted == false
+
     fun hasInFlight(mediaId: String): Boolean =
         inFlight[mediaId]?.isCompleted == false
 

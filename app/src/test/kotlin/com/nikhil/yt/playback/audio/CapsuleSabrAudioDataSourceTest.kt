@@ -107,6 +107,17 @@ class CapsuleSabrAudioDataSourceTest {
         } finally { broken.close() }
     }
 
+    @Test fun emptySabrSessionIsNotSuccessfulPlayback() {
+        val empty = CapsuleSabrAudioDataSource(chunkStream = { kotlinx.coroutines.flow.emptyFlow() })
+        try {
+            empty.open(dataSpec())
+            val failure = assertThrows(CapsuleSabrTransportException::class.java) {
+                empty.read(ByteArray(1), 0, 1)
+            }
+            assertEquals("producer", failure.stage)
+        } finally { empty.close() }
+    }
+
     @Test fun interruptedSabrProducerDoesNotLookLikeAnUnhealthyCdn() {
         val cancelled = CapsuleSabrAudioDataSource(chunkStream = {
             flow { throw CancellationException("user skipped track") }

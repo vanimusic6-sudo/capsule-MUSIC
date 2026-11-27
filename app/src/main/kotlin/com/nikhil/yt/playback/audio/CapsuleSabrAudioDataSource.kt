@@ -83,6 +83,7 @@ internal class CapsuleSabrAudioDataSource(
     private var pending: SabrChunk? = null
     private var pendingOffset = 0
     private var currentPosition = 0L
+    private var receivedFirstChunk = false
     private var bytesLeft = Long.MAX_VALUE
     private var currentContext: CapsuleSabrAudioOpenContext? = null
 
@@ -118,6 +119,7 @@ internal class CapsuleSabrAudioDataSource(
         beforeNetworkOpen(dataSpec)
         currentContext = sabrContext
         currentPosition = dataSpec.position
+        receivedFirstChunk = false
         bytesLeft = if (length == C.LENGTH_UNSET.toLong()) Long.MAX_VALUE else length
         pending = null
         pendingOffset = 0
@@ -138,6 +140,9 @@ internal class CapsuleSabrAudioDataSource(
                         throw IOException("SABR supplied more bytes than the selected format")
                     }
                     pipe.send(chunk)
+                }
+                if (expectedOffset == 0L && length != 0L) {
+                    throw IOException("SABR completed without any audio bytes")
                 }
                 if (total != null && expectedOffset != total) {
                     throw IOException("SABR ended before the selected audio file was complete")
@@ -201,7 +206,8 @@ internal class CapsuleSabrAudioDataSource(
             // An unresponsive UMP stream must not block Media3's loader
             // indefinitely after the audible Direct stream was exhausted.
             val next = runBlocking {
-                withTimeoutOrNull(readProgressTimeoutMs) {
+                withTimeoutOrNull(if (receivedFirstChunk) readProgressTimeoutMs
+                    else minOf(readProgressTimeoutMs, 8_000L)) {
                     requireNotNull(queue).receiveCatching()
                 }
             } ?: run {
@@ -234,6 +240,7 @@ internal class CapsuleSabrAudioDataSource(
                 return C.RESULT_END_OF_INPUT
             }
             pending = next.getOrThrow()
+            receivedFirstChunk = true
         }
     }
 
