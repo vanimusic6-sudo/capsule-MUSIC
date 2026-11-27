@@ -124,7 +124,7 @@ class PlayerTransitionArchitectureTest {
         assertFalse(window.contains("Brush.horizontalGradient"))
         assertFalse(mini.contains(".playerArtworkEndpoint("))
         assertTrue(player.contains("foregroundAlpha = { 1f }"))
-        assertTrue(main.contains("playerNavigationTravelPx(p, distance, density,"))
+        assertTrue(main.contains("playerNavigationTravelPx(p, distance, this.density,"))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
