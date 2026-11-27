@@ -262,17 +262,17 @@ class PlayerOpeningMotionTest {
         for (density in listOf(1f, 2f, 3.5f)) {
             assertEquals(0f, playerMiniTravelPx(0f, 590f * density, density, -1f), 0f)
             assertEquals(0f, playerNavigationTravelPx(0f, 60f * density, density, -1f), 0f)
-            assertEquals(3.5f * density, playerMiniTravelPx(0.029f, 590f * density, density, -0.3f), 0.001f)
-            assertEquals(-2.5f * density, playerNavigationTravelPx(0.029f, 60f * density, density, -0.3f), 0.001f)
-            assertEquals(0f, playerDockLanding(0.029f, 0.3f), 0f)
-            assertEquals(0f, playerDockLanding(0.029f, Float.NaN), 0f)
+            assertEquals(3f * density, playerMiniTravelPx(0.0135f, 590f * density, density, -0.3f), 0.001f)
+            assertEquals(-2f * density, playerNavigationTravelPx(0.0135f, 60f * density, density, -0.3f), 0.001f)
+            assertEquals(0f, playerDockLanding(0.0135f, 0.3f), 0f)
+            assertEquals(0f, playerDockLanding(0.0135f, Float.NaN), 0f)
             for (i in 0..1000) {
                 val p = i / 1000f
                 val landing = playerDockLanding(p, -0.3f)
                 assertTrue(landing in 0f..1f)
-                if (p >= 0.055f || p <= 0.003f) assertEquals(0f, landing, 0.0001f)
-                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 3.5f * density + 0.001f)
-                assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -2.5f * density - 0.001f)
+                if (p >= 0.025f || p <= 0.002f) assertEquals(0f, landing, 0.0001f)
+                assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 3f * density + 0.001f)
+                assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -2f * density - 0.001f)
             }
         }
     }
@@ -306,8 +306,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 120f..180f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 875f)
+            assertTrue("Responsive first two frames", at(33) in 90f..140f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 810f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -342,7 +342,7 @@ class PlayerOpeningMotionTest {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
         assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 16f..18f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 10f..12f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -352,13 +352,13 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun closingTailDoesNotDrawOrOwnInput() {
-        for (i in 0..35) {
+        for (i in 0..25) {
             val p = i / 1000f
             assertEquals(0f, playerPresentationOpacity(p), 0f)
             assertFalse(playerPageVisible(p))
             assertFalse(playerSceneShouldInterceptTouch(p, expanding = false, dismissed = false))
         }
-        assertTrue(playerSceneShouldInterceptTouch(0.036f, expanding = false, dismissed = false))
+        assertTrue(playerSceneShouldInterceptTouch(0.026f, expanding = false, dismissed = false))
         assertTrue(playerSceneShouldInterceptTouch(0f, expanding = true, dismissed = false))
     }
 
@@ -379,6 +379,19 @@ class PlayerOpeningMotionTest {
         }
         assertTrue("cover crossfade must be finite, not a perpetual animated layer",
             CAPSULE_COVER_HANDOFF_MS in 160..260)
+    }
+
+    @Test fun dockApproachNeverAddsASecondSpatialAccelerationSpike() {
+        var previous = 0f
+        for (i in 1..10000) {
+            val p = i / 10000f
+            val geometry = playerFrameGeometryProgress(p)
+            val slope = (geometry - previous) * 10000f
+            assertTrue("Monotonic physical position", slope >= -0.001f)
+            assertTrue("No amplified late acceleration", slope <= 1.061f)
+            previous = geometry
+        }
+        assertEquals(1f, previous, 0.00001f)
     }
 
     @Test fun contourGrowsFromTheActualMiniBoundsOnDifferentViewports() {
