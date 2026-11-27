@@ -4444,6 +4444,21 @@ class MusicService :
         )
     }
 
+    if (playbackState == Player.STATE_BUFFERING && player.playWhenReady &&
+        player.currentMediaItem?.mediaId == audioBufferLastReadyMediaId &&
+        !isCurrentCapsuleVideoItem()
+    ) {
+        // A speculative resolve admitted while READY can still be active
+        // when the current song starves. Protect actual loader demands.
+        val cancelled = audioResolveCoordinator.cancelSpeculativeExcept(
+            setOfNotNull(player.currentMediaItem?.mediaId),
+        )
+        if (cancelled.isNotEmpty()) {
+            prefetchUpcomingAudio()
+            Timber.tag(CAPSULE_RESOLVE_TAG).i("prefetch yielded to AUDIO rebuffer count=%d", cancelled.size)
+        }
+    }
+
     if (playbackState == Player.STATE_READY && !isCurrentCapsuleVideoItem()) {
         audioBufferLastReadyMediaId = player.currentMediaItem?.mediaId
         cancelledLoadRecoveredId = null

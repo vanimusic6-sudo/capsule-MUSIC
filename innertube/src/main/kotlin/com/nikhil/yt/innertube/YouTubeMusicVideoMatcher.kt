@@ -54,6 +54,9 @@ internal object YouTubeMusicVideoMatcher {
     fun needsSecondQuery(bestScore: Int?): Boolean =
         bestScore == null || bestScore < FIRST_QUERY_ACCEPT_SCORE
 
+    fun canFinishHedgedSearch(score: Int, omvVerified: Boolean, distinctMatches: Int): Boolean =
+        omvVerified && distinctMatches == 1 && score >= STRONG_MATCH_SCORE
+
     fun scoreCandidate(
         sourceTitle: String,
         sourceTitleNorm: String,
