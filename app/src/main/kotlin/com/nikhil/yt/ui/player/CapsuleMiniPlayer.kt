@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import com.nikhil.yt.ui.component.LocalMiniPlayerGestureArbiter
+import com.nikhil.yt.ui.component.LocalCapsuleBackgroundMotionEnabled
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
@@ -155,12 +156,14 @@ fun CapsuleMiniPlayer(
     foregroundAlpha: () -> Float = { 1f },
     foregroundInteractive: Boolean = true,
     glassBackdrop: Backdrop? = null,
+    keepWarm: Boolean = false,
 ) {
     val playerConnection =
         LocalPlayerConnection.current ?: return
 
     val onScreen = appIsOnScreen()
     val visualsActive = visible && onScreen
+    val decorativeMotion = visualsActive && LocalCapsuleBackgroundMotionEnabled.current
 
     val mediaMetadata by
         playerConnection.mediaMetadata.collectAsState()
@@ -183,10 +186,9 @@ fun CapsuleMiniPlayer(
                     MiniPlayerBackgroundStyle.THEME,
         )
 
-    if (!visualsActive) {
-        // Preserve BottomSheet's collapsed measurement, but do not keep the hidden mini-player's
-        // database/session/swipe subscriptions or animation objects alive underneath full-player.
-        // Palette extraction above intentionally stays warm because the reveal color is perceptual.
+    if (!visualsActive && !(keepWarm && onScreen)) {
+        // Keep the measurement only when this is not the retained full-player dock.
+        // The retained dock avoids cold composition, text layout and image decode on close.
         Box(
             modifier =
                 modifier
@@ -202,7 +204,8 @@ fun CapsuleMiniPlayer(
     val isPlaying by
         playerConnection.isPlaying.collectAsState()
 
-    LaunchedEffect(isPlaying, playbackState) {
+    LaunchedEffect(isPlaying, playbackState, visualsActive) {
+        if (!visualsActive) return@LaunchedEffect
         // The compact surface only owns the mathematical comet phase while it is actually visible.
         // The full player/lyrics renderer takes over when the compact surface leaves composition.
         CapsuleCometPhaseClock.setRunning(
@@ -579,10 +582,10 @@ fun CapsuleMiniPlayer(
             pureBlack = pureBlack,
             colors = miniArtworkColors,
             animated =
-                visualsActive &&
+                decorativeMotion &&
                     isPlaying &&
                     playbackState == Player.STATE_READY,
-            glassBackdrop = glassBackdrop,
+            glassBackdrop = if (visualsActive) glassBackdrop else null,
             glassShape = miniPlayerShape,
             modifier =
                 Modifier
@@ -652,7 +655,7 @@ fun CapsuleMiniPlayer(
                             else metadata.copy(explicit = true)
                         }
                     },
-                    visible = visualsActive,
+                    visible = decorativeMotion,
                     modifier =
                         Modifier.weight(1f),
                 )
