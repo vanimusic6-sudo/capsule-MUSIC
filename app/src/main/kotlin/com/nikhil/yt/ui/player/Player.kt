@@ -612,6 +612,9 @@ fun BottomSheetPlayer(
                 duration = if (miniVisible) duration else 0L,
                 pureBlack = pureBlack,
                 visible = miniVisible,
+                // Retain native mini composition and decoded artwork while the full player covers it.
+                // Position updates and decorative motion remain gated; no redraw of the hidden card.
+                keepWarm = onScreen && state.playerMotion && !state.isDismissed,
                 glassBackdrop = miniPlayerBackdrop,
                 // PlayerWindow fades the entire Mini once, including its background.
                 foregroundAlpha = { 1f },
