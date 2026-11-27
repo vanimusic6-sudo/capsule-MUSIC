@@ -613,7 +613,7 @@ fun BottomSheetPlayer(
                 pureBlack = pureBlack,
                 visible = miniVisible,
                 glassBackdrop = miniPlayerBackdrop,
-                // The incoming opaque sheet covers the dock; never fade its contents separately.
+                // PlayerWindow fades the entire Mini once, including its background.
                 foregroundAlpha = { 1f },
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
