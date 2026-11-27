@@ -29,8 +29,8 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 420f
-internal const val PLAYER_CLOSE_STIFFNESS = 480f
+internal const val PLAYER_OPEN_STIFFNESS = 340f
+internal const val PLAYER_CLOSE_STIFFNESS = 380f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
 )
@@ -82,7 +82,7 @@ internal fun playerFrameShadowDp(progress: Float): Float {
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
 /** The destination is visible only within the whole-scene optical envelope. */
-internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > PlayerSceneTouchThreshold
+internal fun playerPageVisible(progress: Float): Boolean = playerPresentationOpacity(progress) > 0f
 internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.985f
 
 /**
@@ -90,7 +90,7 @@ internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(
  * again. Release BOTH full-screen pointer owners at the same moment, rather than waiting
  * for the last sub-pixel of the closing spring (which made the first Home scroll stall).
  */
-internal const val PlayerSceneTouchThreshold = 0.002f
+internal const val PlayerSceneTouchThreshold = 0.035f
 
 /** The same release boundary is used by the Home blocker and destination player window. */
 internal fun playerSceneShouldInterceptTouch(
@@ -101,22 +101,39 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 1f
-// Navigation remains behind the opaque page and is covered by its physical edge.
-internal fun playerNavigationTuck(progress: Float): Float = 0f
+internal const val PLAYER_MINI_FADE_END = 0.52f
+// Navigation clears the dock while the destination is still nearly transparent.
+internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0f, 0.20f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    if (boundedProgress(progress) < 1f) 1f else 0f
-// One optical envelope for the complete, live destination scene.
-internal fun playerPresentationOpacity(progress: Float): Float = if (playerPageVisible(progress)) 1f else 0f
+    1f - playerSoftPhase(progress, 0.27f, PLAYER_MINI_FADE_END)
+internal fun playerPresentationOpacity(progress: Float): Float =
+    playerSoftPhase(progress, 0.085f, 0.40f)
 
-/** One rigid sheet, one translation. The very short invisible anchor tail has no pixels. */
-internal fun playerSheetOffsetPx(progress: Float, viewportHeight: Float): Float {
-    if (!viewportHeight.isFinite() || viewportHeight <= 0f) return 0f
-    return viewportHeight * (1f - playerPhase(progress, PlayerSceneTouchThreshold, 1f))
+/**
+ * A small landing accent driven by actual closing velocity. It is zero at
+ * both ends, continuous through a reversal, and never changes the sheet anchor.
+ * Mini goes DOWN by at most 3.5 dp; the returning nav rises by at most 2.5 dp.
+ */
+internal fun playerDockLanding(progress: Float, velocityFraction: Float): Float {
+    if (!velocityFraction.isFinite() || velocityFraction >= 0f) return 0f
+    val t = playerPhase(progress, 0.003f, 0.055f)
+    val lobe = 4f * t * (1f - t)
+    val closingWeight = ((-velocityFraction) / 0.14f).coerceIn(0f, 1f)
+    return lobe * lobe * closingWeight
 }
 
-internal fun playerSheetCornerDp(progress: Float): Float =
-    24f * (1f - playerSoftPhase(progress, 0.78f, 1f))
+internal fun playerMiniTravelPx(progress: Float, dockTop: Float, density: Float, velocityFraction: Float): Float {
+    if (!dockTop.isFinite() || !density.isFinite() || density <= 0f) return 0f
+    return -dockTop.coerceAtLeast(0f) * playerFrameGeometryProgress(progress) +
+        3.5f * density * playerDockLanding(progress, velocityFraction)
+}
+
+internal fun playerNavigationTravelPx(progress: Float, distance: Float, density: Float, velocityFraction: Float): Float {
+    if (!distance.isFinite() || !density.isFinite() || density <= 0f) return 0f
+    return distance.coerceAtLeast(0f) * playerNavigationTuck(progress) -
+        2.5f * density * playerDockLanding(progress, velocityFraction)
+}
+
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 // One shared progress drives the spatial and optical handoff.
 internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
@@ -177,10 +194,9 @@ internal fun playerPresentationContentY(
  */
 internal fun playerFrameGeometryProgress(progress: Float): Float {
     val p = boundedProgress(progress)
-    // Finish at the exact dock while the real Mini takes ownership. C1 join
-    // to the physical trajectory at 0.24, no trailing rectangle at rest.
-    val dockTransfer = playerPresentationOpacity(p)
-    return p * dockTransfer
+    // The compact landing finishes before the final physical accent.
+    // Past the short dock interval the geometry follows the spring directly.
+    return p * playerSoftPhase(p, 0.035f, 0.14f)
 }
 
 internal fun playerPresentationBounds(
@@ -261,8 +277,8 @@ internal data class PlayerFrameContour(
 /** The mini's round corners follow the growing frame, then disappear outside the viewport. */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = (miniRadius + (maxOf(miniRadius, 22f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.40f)) *
-        (1f - playerSoftPhase(p, 0.68f, 1f))
+    val radius = (miniRadius + (maxOf(miniRadius, 24f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.35f)) *
+        (1f - playerSoftPhase(p, 0.76f, 1f))
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
