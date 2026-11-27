@@ -120,6 +120,8 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("keepWarm = onScreen && state.playerMotion && !state.isDismissed"))
         assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = backgroundContent)"))
         assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = content)"))
+        assertTrue(window.contains("Box(Modifier.fillMaxSize().graphicsLayer().background(backgroundColor))"))
+        assertTrue(window.contains("alpha = playerLiftShadowAlpha(p)"))
         assertFalse(window.contains("alpha = playerPresentationOpacity"))
         assertFalse(window.contains("scaleX ="))
         assertFalse(window.contains("scaleY ="))
