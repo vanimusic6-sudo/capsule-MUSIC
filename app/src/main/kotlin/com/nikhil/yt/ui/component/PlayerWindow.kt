@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -110,7 +111,7 @@ internal fun PlayerWindow(
         // The actual compact card moves, not a captured replica.
         if (onDismiss == null || !state.isDismissed) {
             Box(
-                Modifier.zIndex(if (sourceDraws) 2f else 0f)
+                Modifier.zIndex(2f)
                     .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
                     .fillMaxWidth().height(miniHeight)
                     .graphicsLayer {
@@ -147,16 +148,30 @@ internal fun PlayerWindow(
                         // hit targets. Disable its pointer tree at compact rest.
                         .graphicsLayer {
                             val p = state.visualProgress
-                            val frame = playerPresentationBounds(p, size.width, size.height,
-                                (state.expandedBound - state.collapsedBound).toPx(),
-                                miniHeight.toPx(), leftInset, rightInset)
                             val opacity = playerPresentationOpacity(p)
                             alpha = opacity
-                            translationY = if (opacity > 0f) frame.top else size.height
-                            val radius = playerPageContour(p, miniRadius.toPx(), density).radius
-                                .coerceAtMost(minOf(frame.width, frame.height) * 0.5f)
-                            shape = PlayerWindowShape(Rect(frame.left, 0f, frame.right, frame.height), radius, 0f)
-                            clip = p < 1f
+                            when {
+                                opacity <= 0f -> {
+                                    translationY = size.height
+                                    shape = RectangleShape
+                                    clip = false
+                                }
+                                p >= 1f -> {
+                                    translationY = 0f
+                                    shape = RectangleShape
+                                    clip = false
+                                }
+                                else -> {
+                                    val frame = playerPresentationBounds(p, size.width, size.height,
+                                        (state.expandedBound - state.collapsedBound).toPx(),
+                                        miniHeight.toPx(), leftInset, rightInset)
+                                    translationY = frame.top
+                                    val radius = playerPageContour(p, miniRadius.toPx(), density).radius
+                                        .coerceAtMost(minOf(frame.width, frame.height) * 0.5f)
+                                    shape = PlayerWindowShape(Rect(frame.left, 0f, frame.right, frame.height), radius, 0f)
+                                    clip = true
+                                }
+                            }
                         }
                         .drawWithContent { if (pageDraws) drawContent() },
                 ) {
