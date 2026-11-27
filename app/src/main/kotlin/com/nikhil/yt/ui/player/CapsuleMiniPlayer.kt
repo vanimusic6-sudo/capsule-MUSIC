@@ -655,7 +655,8 @@ fun CapsuleMiniPlayer(
                             else metadata.copy(explicit = true)
                         }
                     },
-                    visible = decorativeMotion,
+                    visible = visualsActive,
+                    marqueeEnabled = decorativeMotion,
                     modifier =
                         Modifier.weight(1f),
                 )
@@ -938,6 +939,7 @@ private fun CapsuleMiniPlayButton(
 private fun CapsuleMiniSongInfo(
     mediaMetadata: MediaMetadata?,
     visible: Boolean,
+    marqueeEnabled: Boolean = visible,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection =
@@ -961,7 +963,7 @@ private fun CapsuleMiniSongInfo(
             }
         }
 
-    CapsuleMiniSongMetadata(mediaMetadata, error != null, visible, modifier)
+    CapsuleMiniSongMetadata(mediaMetadata, error != null, marqueeEnabled, modifier)
 }
 
 // A pure UI unit, so real narrow-screen typography can be regression-tested
