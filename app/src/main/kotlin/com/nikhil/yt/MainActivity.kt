@@ -228,6 +228,7 @@ import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
 import com.nikhil.yt.ui.component.playerSceneShouldInterceptTouch
 import com.nikhil.yt.ui.component.playerNavigationTravelPx
+import com.nikhil.yt.ui.component.LocalPlayerNavigationHeight
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
@@ -1732,27 +1733,35 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                                BottomSheetPlayer(
-                                    state = playerBottomSheetState,
-                                    navController = navController,
-                                    modifier =
-                                        Modifier.zIndex(
-                                            if (playerBottomSheetState.shouldLayerAboveCollapsedChrome) {
-                                                2f
-                                            } else {
-                                                0f
+                                // Supply the real measured-height contract to the player contour.
+                                CompositionLocalProvider(
+                                    LocalPlayerNavigationHeight provides
+                                        if (shouldShowNavigationBar && !useRail)
+                                            bottomInset + floatingBarsBottomPadding + navVisibleHeight
+                                        else 0.dp,
+                                ) {
+                                    BottomSheetPlayer(
+                                        state = playerBottomSheetState,
+                                        navController = navController,
+                                        modifier =
+                                            Modifier.zIndex(
+                                                if (playerBottomSheetState.shouldLayerAboveCollapsedChrome) {
+                                                    2f
+                                                } else {
+                                                    0f
+                                                },
+                                            ),
+                                        pureBlack = pureBlack,
+                                        backAction = playerBackAction,
+                                        miniPlayerBackdrop =
+                                            when {
+                                                !miniPlayerLiquidGlassActive -> null
+                                                active -> miniPlayerSearchBackdrop
+                                                else -> miniPlayerGlassBackdrop
                                             },
-                                        ),
-                                    pureBlack = pureBlack,
-                                    backAction = playerBackAction,
-                                    miniPlayerBackdrop =
-                                        when {
-                                            !miniPlayerLiquidGlassActive -> null
-                                            active -> miniPlayerSearchBackdrop
-                                            else -> miniPlayerGlassBackdrop
-                                        },
-                                )
-                                // Navigation tucks first and shares the Mini's closing landing.
+                                    )
+                                }
+                                // Navigation follows the expanding lower edge and shares the Mini's closing landing.
                                 // Scaffold retains only a height spacer so page geometry is unchanged.
                                 if (!useRail) {
                                     val navSlideDistance =
