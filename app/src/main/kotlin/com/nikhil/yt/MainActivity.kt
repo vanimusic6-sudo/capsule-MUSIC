@@ -1769,7 +1769,7 @@ class MainActivity : ComponentActivity() {
                                                     val p = if (playerBottomSheetState.isDismissed) 0f
                                                         else playerBottomSheetState.visualProgress
                                                     translationY = distance * (1f - reveal) + reveal *
-                                                        playerNavigationTravelPx(p, distance, density,
+                                                        playerNavigationTravelPx(p, distance, this.density,
                                                             playerBottomSheetState.frameVelocityFraction)
                                                 },
                                     ) {
