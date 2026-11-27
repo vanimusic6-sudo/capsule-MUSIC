@@ -182,7 +182,9 @@ object CapsuleNewPipeExtractor {
         muxedOnly: Boolean = false, failedBackend: String? = null,
         onAttempt: (String, Long, Boolean) -> Unit = { _, _, _ -> },
         onRouteFailure: (String, Throwable) -> Unit = { _, _ -> },
+        parserOnly: Boolean = false,
     ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend, health = routeHealth, expectedVideoId = videoId,
+        parserOnly = parserOnly,
         onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) },
         onFailure = { route, failure -> onRouteFailure(route.wireName, failure) }) { route ->
         when (route) {

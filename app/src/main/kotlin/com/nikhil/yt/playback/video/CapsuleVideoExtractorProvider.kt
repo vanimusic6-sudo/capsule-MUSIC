@@ -96,6 +96,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                     CapsuleNewPipeQuality.valueOf(quality.name),
                     muxedOnly,
                     extras?.getString(CapsuleVideoIpc.EXTRA_FAILED_BACKEND),
+                    parserOnly = true,
                     onAttempt = { route, elapsed, success -> routeTimings += "$route:${elapsed}ms:${if (success) "ok" else "fallback"}" },
                     onRouteFailure = { route, failure ->
                         val kind = CapsuleNewPipeExtractor.classify(failure)

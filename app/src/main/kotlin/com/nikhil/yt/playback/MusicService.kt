@@ -190,7 +190,6 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.CapsuleVideoGuardStore
 import com.nikhil.yt.playback.video.CapsuleVideoCompanion
-import com.nikhil.yt.playback.video.CapsuleVideoHttp3Transport
 import com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactory
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
@@ -1322,8 +1321,8 @@ class MusicService :
             var lastFailure = failure
             while (videoRecoveryAttempts < 2 && !CapsuleVideoRequestGuard.isBlocked()) {
                 val attempt = ++videoRecoveryAttempts
-                val refreshWebFirst = attempt == 1 &&
-                    stream.backend == com.nikhil.yt.playback.video.CapsuleWebVideoResolver.BACKEND
+                // Always try the dedicated parsers before renewing a WEB reserve.
+                val refreshWebFirst = false
                 Timber.tag("CapsuleVideo").i(
                     "VIDEO recover clip=%s attempt=%s backend=%s refreshWeb=%s",
                     stream.videoId, attempt, stream.backend, refreshWebFirst,
@@ -5345,29 +5344,33 @@ class MusicService :
         return DataSource.Factory { AudioCacheDataSource(streaming.createDataSource(), offline.createDataSource()) }
     }
 
-    private fun createVideoCacheDataSource(boundedProgressive: Boolean = true): CacheDataSource.Factory {
-        val videoHttpClient =
-            mediaOkHttpClient
-                .newBuilder()
-                // Signed VIDEO HTTP requests get their own bounded queue
-                // and sockets; one slow video host cannot occupy AUDIO's
-                // HTTP dispatcher/connection pool.
-                .dispatcher(okhttp3.Dispatcher().apply {
-                    maxRequests = 2
-                    maxRequestsPerHost = 2
-                })
-                .connectionPool(okhttp3.ConnectionPool(2, 45L, TimeUnit.SECONDS))
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(false)
-                .addInterceptor(CapsuleVideoStreamInterceptor())
-                .build()
+    private val videoTransportClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .proxy(YouTube.streamProxy)
+            .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+            .dispatcher(okhttp3.Dispatcher().apply {
+                maxRequests = 4
+                maxRequestsPerHost = 4
+            })
+            .connectionPool(okhttp3.ConnectionPool(4, 60L, TimeUnit.SECONDS))
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
+            }
+            .addInterceptor(CapsuleVideoStreamInterceptor())
+            .addInterceptor(com.nikhil.yt.playback.video.VideoCdnRedirectInterceptor {
+                connectivityManager.activeNetwork?.networkHandle
+            })
+            .build()
+    }
 
-        val rawVideoUpstream = CapsuleVideoHttp3Transport.createUpstream(
-            context = this,
-            okhttpClient = videoHttpClient,
-            explicitProxyConfigured = YouTube.streamProxy != null,
-        )
+    private fun createVideoCacheDataSource(boundedProgressive: Boolean = true): CacheDataSource.Factory {
+        // DASH/HLS and progressive share the same VIDEO-only pool and routing memory.
+        val rawVideoUpstream = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(videoTransportClient))
         val httpUpstream = DataSource.Factory {
             com.nikhil.yt.playback.video.CapsuleVideoLinkDataSource(rawVideoUpstream.createDataSource())
         }

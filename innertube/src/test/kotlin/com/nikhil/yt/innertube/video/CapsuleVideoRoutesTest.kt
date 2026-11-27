@@ -9,6 +9,26 @@ class CapsuleVideoRoutesTest {
     private val stream = CapsuleNewPipeResolved("abcdefghijk", "https://rr.googlevideo.com/video", null,
         "360p", 640, 360, 18, -1, Long.MAX_VALUE)
 
+    @Test fun productionVideoRosterUsesOnlyDedicatedParsers() {
+        val calls = mutableListOf<CapsuleVideoRoute>()
+        val selected = resolveVideoRoutes(health = CapsuleVideoRouteHealth(), parserOnly = true) {
+            calls += it
+            if (it == CapsuleVideoRoute.PIPEPIPE) null else stream
+        }
+        assertEquals(listOf(CapsuleVideoRoute.PIPEPIPE, CapsuleVideoRoute.NEWPIPE), calls)
+        assertEquals("newpipe", selected.backend)
+    }
+
+    @Test fun productionRosterHonorsBothParserBotCooldownsWithoutDirectProbes() {
+        val health = CapsuleVideoRouteHealth()
+        health.failure(CapsuleVideoRoute.PIPEPIPE, CapsuleNewPipeFailure.BOT_BLOCKED)
+        health.failure(CapsuleVideoRoute.NEWPIPE, CapsuleNewPipeFailure.BOT_BLOCKED)
+        val error = runCatching {
+            resolveVideoRoutes(health = health, parserOnly = true) { error("No blocked route may be retried") }
+        }.exceptionOrNull()!!
+        assertEquals(CapsuleNewPipeFailure.BOT_BLOCKED, CapsuleNewPipeExtractor.classify(error))
+    }
+
     @Test fun segmentedRoutesPrecedeTheProgressiveReelFallback() {
         val calls = mutableListOf<CapsuleVideoRoute>()
         val result = resolveVideoRoutes { route ->

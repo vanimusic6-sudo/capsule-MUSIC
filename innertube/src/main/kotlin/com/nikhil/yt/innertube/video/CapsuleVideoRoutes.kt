@@ -70,9 +70,9 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
         }
     }
 
-    @Synchronized fun pausedBotCount(): Int {
+    @Synchronized fun pausedBotCount(routes: Collection<CapsuleVideoRoute> = CapsuleVideoRoute.entries): Int {
         val now = clock()
-        return CapsuleVideoRoute.entries.count { (botQuietUntil[it] ?: 0L) > now }
+        return routes.count { (botQuietUntil[it] ?: 0L) > now }
     }
 
     @Synchronized fun success(route: CapsuleVideoRoute) {
@@ -120,6 +120,7 @@ internal fun resolveVideoRoutes(
     onAttempt: (CapsuleVideoRoute, Long, Boolean) -> Unit = { _, _, _ -> },
     onFailure: (CapsuleVideoRoute, Throwable) -> Unit = { _, _ -> },
     expectedVideoId: String? = null,
+    parserOnly: Boolean = false,
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
 ): CapsuleNewPipeResolved {
     val failures = mutableListOf<Exception>()
@@ -127,13 +128,15 @@ internal fun resolveVideoRoutes(
     // A URL can resolve successfully yet fail at the CDN/decoder. Remember
     // this feedback across the next clips, not just this one recovery call.
     CapsuleVideoRoute.entries.firstOrNull { it.wireName == failedBackend }?.let { health?.failure(it) }
-    val routes = health?.candidates(failedBackend)
-        ?: CapsuleVideoRoute.entries.sortedBy { it.wireName == failedBackend }
-    val pausedBotRoutes = health?.pausedBotCount() ?: 0
+    val roster = if (parserOnly) listOf(CapsuleVideoRoute.PIPEPIPE, CapsuleVideoRoute.NEWPIPE)
+        else CapsuleVideoRoute.entries.toList()
+    val routes = health?.candidates(failedBackend)?.filter { it in roster }
+        ?: roster.sortedBy { it.wireName == failedBackend }
+    val pausedBotRoutes = health?.pausedBotCount(roster) ?: 0
     // If every route already explicitly reported an anti-bot response in this
     // process, do not send another five /player calls just to get the same answer.
     if (routes.isEmpty()) {
-        val kind = if (pausedBotRoutes == CapsuleVideoRoute.entries.size)
+        val kind = if (pausedBotRoutes == roster.size)
             CapsuleNewPipeFailure.BOT_BLOCKED else CapsuleNewPipeFailure.NETWORK
         throw CapsuleVideoRoutesException(kind, null)
     }
@@ -184,7 +187,7 @@ internal fun resolveVideoRoutes(
     // A client-specific bot response is not proof that every independent
     // route is blocked. Never turn a mixture of parser/network/no-format
     // failures into a global ten-minute ban based on just one backend.
-    val allBotBlocked = (failures.size + pausedBotRoutes == CapsuleVideoRoute.entries.size) &&
+    val allBotBlocked = (failures.size + pausedBotRoutes == roster.size) &&
         (failures.isNotEmpty() || pausedBotRoutes > 0) &&
         failures.all { CapsuleNewPipeExtractor.classify(it) == CapsuleNewPipeFailure.BOT_BLOCKED }
     val kind = when {

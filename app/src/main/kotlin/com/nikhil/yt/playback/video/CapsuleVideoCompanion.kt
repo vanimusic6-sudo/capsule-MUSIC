@@ -72,11 +72,11 @@ internal const val CAPSULE_SOUND_RAMP_STEPS = 5
  * playback begins. A modest initial 1.8s runway avoids rapid first-second
  * underruns during CDN window handover. This does not affect AUDIO's buffer.
  */
-internal const val CAPSULE_VIDEO_MIN_BUFFER_MS = 15_000
-internal const val CAPSULE_VIDEO_MAX_BUFFER_MS = 45_000
+internal const val CAPSULE_VIDEO_MIN_BUFFER_MS = 30_000
+internal const val CAPSULE_VIDEO_MAX_BUFFER_MS = 75_000
 internal const val CAPSULE_VIDEO_START_BUFFER_MS = 1_800
-internal const val CAPSULE_VIDEO_REBUFFER_MS = 5_000
-internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 24 * 1024 * 1024
+internal const val CAPSULE_VIDEO_REBUFFER_MS = 8_000
+internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 32 * 1024 * 1024
 
 /**
  * Learn only the measured READY latency of successfully prepared VIDEO.
@@ -206,7 +206,7 @@ internal class CapsuleVideoCompanion(
                 CAPSULE_VIDEO_REBUFFER_MS,
             )
             .setTargetBufferBytes(CAPSULE_VIDEO_TARGET_BUFFER_BYTES)
-            .setPrioritizeTimeOverSizeThresholds(true).build())
+            .setPrioritizeTimeOverSizeThresholds(false).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build().apply { addListener(renderers) }
     internal val frameRetention = CapsuleVideoFrameRetention(player, scope)

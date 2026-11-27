@@ -135,7 +135,6 @@ object YouTubeVideoResolver {
      * YouTube extraction requests. Cache hits never take this lock.
      */
     private val resolveMutex = Mutex()
-    private val primaryRouteHealth = CapsuleVideoPrimaryRouteHealth()
 
     /**
      * Initiate only the isolated VIDEO process while the foreground MUSIC
@@ -364,54 +363,41 @@ object YouTubeVideoResolver {
             if (admissionWaitMs >= 300L) Timber.tag(TAG).i(
                 "VIDEO metadata admission clip=%s waitMs=%d", videoId, admissionWaitMs,
             )
-            // Persist only temporary route health, never signed URLs or tokens.
-            // A repeatedly timed-out WEB route must not add 5.2s to every next
-            // clip before we even begin the already available isolated routes.
-            val eligibleForWeb = !muxedOnly &&
-                failedBackend != CapsuleWebVideoResolver.BACKEND
-            val tryWeb = eligibleForWeb &&
-                primaryRouteHealth.shouldTryWeb(CapsuleInnerTubeXPlayer.sessionIdentity())
-            var missedWebDeadline = false
-            val remote = if (freshWebOnly) {
-                // A refused CDN URL is not evidence that the /player route is dead.
-                // One fresh WEB resolve, within its existing budget, before legacy fallback.
-                withTimeoutOrNull(CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight)) {
+            // Dedicated VIDEO parsers own the primary route. No parallel speculative
+            // requests and no custom direct-client carousel. WEB is a bounded last resort.
+            suspend fun webReserve(): CapsuleResolvedVideo {
+                val candidate = withTimeoutOrNull(CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight)) {
                     CapsuleWebVideoResolver.resolve(videoId, quality)
-                } ?: throw java.io.IOException("Fresh VIDEO WEB stream unavailable")
-            } else if (tryWeb) {
-                val preferredStart = SystemClock.elapsedRealtime()
-                capsuleFastPrimaryOrFallback(
-                    primaryBudgetMs = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight),
-                    primary = {
-                        CapsuleWebVideoResolver.resolve(videoId, quality)
-                            .also { primaryRouteHealth.onWebCompleted() }
-                    },
-                    fallback = {
-                        Timber.tag(TAG).i(
-                            "VIDEO fallback clip=%s reason=%s elapsedMs=%d",
-                            videoId, if (missedWebDeadline) "web-timeout" else "web-unavailable",
-                            SystemClock.elapsedRealtime() - preferredStart,
-                        )
-                        callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
-                    },
-                    onPrimaryDeadline = {
-                        // Only learn from a timeout if an independent fallback
-                        // actually returns a validated stream. No fallback means
-                        // no evidence that skipping WEB could help next time.
-                        missedWebDeadline = true
-                    },
-                )
-            } else {
-                if (eligibleForWeb) {
-                    Timber.tag(TAG).i("VIDEO fast fallback clip=%s reason=recent-web-timeouts", videoId)
+                } ?: throw java.io.IOException("VIDEO reserve returned no stream")
+                if (candidate.delivery == CapsuleVideoDelivery.SABR) {
+                    throw java.io.IOException("VIDEO SABR is disabled in parser-first mode")
                 }
-                callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+                return candidate
+            }
+            val remote = if (freshWebOnly) {
+                webReserve()
+            } else {
+                try {
+                    callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+                } catch (failure: VideoBackendException) {
+                    // Respect rate limits, confirmed bot challenges and unavailable content.
+                    // The reserve is not an authorization or age-restriction bypass.
+                    if (muxedOnly || failedBackend == CapsuleWebVideoResolver.BACKEND ||
+                        CapsuleVideoRequestGuard.isBlocked() ||
+                        failure.failure !in setOf(CapsuleVideoFailure.EXTRACTOR, CapsuleVideoFailure.NETWORK,
+                            CapsuleVideoFailure.REMOTE_PROCESS_DIED, CapsuleVideoFailure.UNKNOWN)
+                    ) throw failure
+                    Timber.tag(TAG).i("VIDEO parser-reserve clip=%s kind=%s", videoId, failure.failure)
+                    webReserve()
+                }
+            }
+            if (remote.delivery == CapsuleVideoDelivery.SABR) {
+                throw java.io.IOException("VIDEO SABR is disabled in parser-first mode")
             }
             val resolved = remote.toResolved(sourceMediaId)
             if (VideoRejectedLinks.isRejected(resolved.videoStreamUrl) ||
                 resolved.audioStreamUrl?.let(VideoRejectedLinks::isRejected) == true
             ) throw java.io.IOException("VIDEO resolver returned a previously refused link")
-            if (missedWebDeadline) primaryRouteHealth.onWebDeadline(videoId)
             cache.put(videoId, key, resolved)
             resolved
         }
@@ -554,7 +540,7 @@ object YouTubeVideoResolver {
         CapsuleWebVideoExtractor.invalidateCachedInventory()
         Result.success(resolveExact(
             failed.sourceMediaId, failed.videoId, quality, muxedOnly,
-            failedBackend = if (refreshWebFirst) null else failed.backend,
+            failedBackend = if (refreshWebFirst || !muxedOnly) null else failed.backend,
             refresh = true,
             freshWebOnly = refreshWebFirst,
         ))

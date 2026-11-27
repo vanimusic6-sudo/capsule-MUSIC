@@ -39,6 +39,7 @@ internal class ResolvingAudioDownloader(
     private var resolved: CapsuleAudioEngine.PlaybackData? = null
     private var expiresAtNs = 0L
     private var recoveries = 0
+    private var terminalRefusal: IOException? = null
 
     override fun download(progressListener: Downloader.ProgressListener?) {
         try {
@@ -121,6 +122,7 @@ internal class ResolvingAudioDownloader(
                 startArtwork()
                 return
             }
+            terminalRefusal?.let { throw it }
             while (true) {
                 checkActive()
                 val playback = resolved?.takeIf { System.nanoTime() < expiresAtNs }
@@ -147,11 +149,29 @@ internal class ResolvingAudioDownloader(
                     return
                 } catch (failure: IOException) {
                     checkActive()
-                    // A subsequent Media3 download() must not reuse a failed URL.
+                    val denied = generateSequence(failure as Throwable?) { it.cause }.take(12)
+                        .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                        .any { it.responseCode == 403 || it.responseCode == 410 }
+                    if (recoveries >= MAX_RECOVERIES) {
+                        if (denied) {
+                            recover(playback, failure) // retire external resume cache as well
+                            resolved = null
+                            expiresAtNs = 0L
+                            terminalRefusal = failure
+                        }
+                        throw failure
+                    }
+                    if (!recover(playback, failure)) {
+                        if (denied) {
+                            resolved = null
+                            expiresAtNs = 0L
+                            terminalRefusal = failure
+                        }
+                        throw failure
+                    }
+                    recoveries++
                     resolved = null
                     expiresAtNs = 0L
-                    if (recoveries >= MAX_RECOVERIES || !recover(playback, failure)) throw failure
-                    recoveries++
                 } finally {
                     delegate = null
                 }
