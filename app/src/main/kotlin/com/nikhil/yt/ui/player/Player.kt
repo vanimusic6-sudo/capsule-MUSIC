@@ -349,8 +349,12 @@ fun BottomSheetPlayer(
         showInlineLyrics,
         state.isDismissed,
         queueSheetState.isExpanded,
+        state.playerMotion && state.isAnimationRunning,
     ) {
         if (sliderPosition != null) return@LaunchedEffect
+        // Keep the currently drawn progress during the finite window transition.
+        // Restart immediately on settling; playback itself is never paused.
+        if (state.playerMotion && state.isAnimationRunning) return@LaunchedEffect
         // Lyrics owns its own visible progress readout. Do not keep the hidden player clock alive
         // underneath it, and do not poll anything after the whole sheet was dismissed.
         if (!onScreen || showInlineLyrics || state.isDismissed || queueSheetState.isExpanded) return@LaunchedEffect
