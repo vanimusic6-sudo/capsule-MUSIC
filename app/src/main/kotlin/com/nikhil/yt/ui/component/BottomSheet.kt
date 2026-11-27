@@ -826,7 +826,7 @@ class BottomSheetState internal constructor(
 
     val shouldLayerAboveCollapsedChrome by
         derivedStateOf {
-            if (playerMotion) !isDismissed && playerPageVisible(visualProgress)
+            if (playerMotion) playerSceneShouldInterceptTouch(visualProgress, isExpandedOrExpanding, isDismissed)
             else shouldRenderExpandedContent(visualProgress, isDismissed, contentHandoffPoint)
         }
 
