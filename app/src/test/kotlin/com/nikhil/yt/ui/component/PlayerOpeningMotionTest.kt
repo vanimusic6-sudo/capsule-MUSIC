@@ -394,6 +394,44 @@ class PlayerOpeningMotionTest {
         assertEquals(1f, previous, 0.00001f)
     }
 
+    @Test fun growingLowerEdgePushesNavigationWithoutOverlapOrGapAfterContact() {
+        for (height in listOf(360f, 700f, 1440f, 2560f)) {
+            for (navHeight in listOf(48f, 64f, 96f, 128f)) {
+                for (gap in listOf(0f, 4f, 8f, 12f)) {
+                    val miniHeight = 64f
+                    val top = height - navHeight - gap - miniHeight
+                    val initialNavTop = height - navHeight
+                    var previousBottom = top + miniHeight
+                    var previousNav = 0f
+                    for (i in 0..1000) {
+                        val p = i / 1000f
+                        val frame = playerPresentationBounds(p, 360f, height, top,
+                            miniHeight, 12f, navigationHeight = navHeight)
+                        val navTravel = playerNavigationTravelPx(p, navHeight, 1f, 0f)
+                        val actualNavTop = initialNavTop + navTravel
+                        assertTrue(frame.bottom >= previousBottom - 0.001f)
+                        assertTrue(navTravel >= previousNav - 0.001f)
+                        assertTrue(frame.bottom <= actualNavTop + 0.001f)
+                        if (p >= PLAYER_NAV_CONTACT) {
+                            assertEquals("Player edge physically displaces the navigation",
+                                actualNavTop, frame.bottom, 0.001f)
+                        } else {
+                            assertEquals(0f, navTravel, 0f)
+                        }
+                        previousBottom = frame.bottom
+                        previousNav = navTravel
+                    }
+                    assertEquals(height, previousBottom, 0.001f)
+                    assertEquals(navHeight, previousNav, 0.001f)
+                }
+            }
+        }
+        // Rail layout or a route with no app navigation must not acquire a fictitious contact.
+        assertEquals(80f * playerFrameGeometryProgress(0.2f),
+            playerLowerEdgeTravelPx(0.2f, 80f, 0f), 0f)
+        assertEquals(0f, playerLowerEdgeTravelPx(0.5f, Float.NaN, 64f), 0f)
+    }
+
     @Test fun contourGrowsFromTheActualMiniBoundsOnDifferentViewports() {
         for (height in listOf(360f, 700f, 1440f, 2560f)) {
             val width = 360f
