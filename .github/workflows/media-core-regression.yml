@@ -3,6 +3,7 @@ name: Capsule Media Core Regression
 on:
   push:
     branches:
+      - engine/playback-reliability-20261127
       - refactor/audio-video-download-20261120
       - fix/video-artist-catalog-lyrics-20261120
       - fix/video-search-thermal-ambient-20261120
@@ -15,6 +16,7 @@ on:
       - 'app/src/test/kotlin/com/nikhil/yt/ui/player/**'
       - 'innertube/src/main/kotlin/com/nikhil/yt/innertube/**'
       - 'innertube/src/test/kotlin/com/nikhil/yt/innertube/**'
+      - 'gradle/libs.versions.toml'
       - '.github/workflows/media-core-regression.yml'
   workflow_dispatch:
 
@@ -54,6 +56,11 @@ jobs:
         run: >-
           gradle :app:testUniversalDebugUnitTest
           --tests 'com.nikhil.yt.playback.audio.DownloadAudioTransportTest'
+          --tests 'com.nikhil.yt.playback.audio.DownloadPlaybackNetworkPriorityTest'
+          --tests 'com.nikhil.yt.playback.PlaybackRecoveryCoordinatorTest'
+          --tests 'com.nikhil.yt.playback.audio.AudioResolveSchedulerTest'
+          --tests 'com.nikhil.yt.playback.audio.AudioResolveCoordinatorTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest'
           --tests 'com.nikhil.yt.playback.audio.AudioChunkedDataSourceTest'
           --tests 'com.nikhil.yt.playback.audio.CapsuleSabrAudioDataSourceTest'
           --tests 'com.nikhil.yt.playback.audio.CapsuleSabrRoutePolicyTest'

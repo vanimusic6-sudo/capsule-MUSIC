@@ -57,14 +57,23 @@ internal class DownloadPlaybackNetworkPriority(
 
     fun shouldYield(): Boolean {
         val now = nowMs()
-        return snapshots.any { (owner, current) ->
+        val currentSnapshots = snapshots
+        // Use one phase for both players. Independent, staggered cycles could
+        // otherwise overlap forever and starve downloads during a long outage.
+        val playerBufferingStart = currentSnapshots.entries
+            .filter { (owner, state) ->
+                (owner == "audio" || owner == "video") && state.phase == Phase.BUFFERING
+            }.minOfOrNull { it.value.enteredAtMs }
+        return currentSnapshots.any { (owner, current) ->
             val elapsed = now - current.enteredAtMs
             elapsed >= 0L && when (current.phase) {
                 Phase.IDLE -> false
                 Phase.BUFFERING -> if (owner == "audio" || owner == "video") {
                     // A real player that is still buffering needs continued
                     // protection, but downloads retain a periodic opportunity.
-                    elapsed % (MAX_BUFFERING_YIELD_MS + BUFFERING_DOWNLOAD_WINDOW_MS) <
+                    val sharedElapsed = now - (playerBufferingStart ?: current.enteredAtMs)
+                    sharedElapsed >= 0L &&
+                        sharedElapsed % (MAX_BUFFERING_YIELD_MS + BUFFERING_DOWNLOAD_WINDOW_MS) <
                         MAX_BUFFERING_YIELD_MS
                 } else elapsed < MAX_BUFFERING_YIELD_MS
                 Phase.READY -> elapsed < if (current.lowHeadroomOnReady)

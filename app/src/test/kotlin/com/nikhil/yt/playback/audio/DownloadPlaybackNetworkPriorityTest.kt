@@ -27,6 +27,18 @@ class DownloadPlaybackNetworkPriorityTest {
         assertFalse(priority.shouldYield())
     }
 
+    @Test fun staggeredAudioAndVideoBufferingShareDownloadOpportunity() {
+        priority.observe("song-a", true, true, false)
+        nowMs += 5_000L
+        priority.observe("song-a", true, true, false, owner = "video")
+        nowMs += 7_000L
+        assertFalse(priority.shouldYield())
+        nowMs += 3_000L
+        assertTrue(priority.shouldYield())
+        priority.clear()
+        assertFalse(priority.shouldYield())
+    }
+
     @Test fun videoResolveDoesNotStartAnotherPriorityCycle() {
         priority.observe("song-a", true, true, false, owner = "video-resolve")
         nowMs += DownloadPlaybackNetworkPriority.MAX_BUFFERING_YIELD_MS +
