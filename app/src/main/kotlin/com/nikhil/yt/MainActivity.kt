@@ -17,6 +17,7 @@ import com.nikhil.yt.ui.screens.LocalCapsuleHeaderNavController
 import com.nikhil.yt.ui.screens.LocalCapsulePinnedHeaderVisible
 import com.nikhil.yt.ui.screens.rememberMainTabNavigator
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.FluidSlidingNavigationBar
 import android.annotation.SuppressLint
@@ -228,6 +229,8 @@ import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
 import com.nikhil.yt.ui.component.playerSceneShouldInterceptTouch
 import com.nikhil.yt.ui.component.playerNavigationTravelPx
+import com.nikhil.yt.ui.component.playerNavigationStretch
+import com.nikhil.yt.ui.component.playerNavigationTuck
 import com.nikhil.yt.ui.component.LocalPlayerNavigationHeight
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
@@ -1761,11 +1764,18 @@ class MainActivity : ComponentActivity() {
                                             },
                                     )
                                 }
-                                // Navigation follows the expanding lower edge and shares the Mini's closing landing.
-                                // Scaffold retains only a height spacer so page geometry is unchanged.
+                                // The real bar is pressed down by the player's lower edge.
+                                // Its elastic return stretches around the bottom edge, never lifting it.
                                 if (!useRail) {
                                     val navSlideDistance =
                                         bottomInset + floatingBarsBottomPadding + navVisibleHeight
+                                    val navDraws by remember(playerBottomSheetState) {
+                                        derivedStateOf {
+                                            navigationBarReveal > 0f &&
+                                                (playerBottomSheetState.isDismissed ||
+                                                    playerNavigationTuck(playerBottomSheetState.visualProgress) < 1f)
+                                        }
+                                    }
                                     Box(
                                         modifier =
                                             Modifier
@@ -1780,7 +1790,12 @@ class MainActivity : ComponentActivity() {
                                                     translationY = distance * (1f - reveal) + reveal *
                                                         playerNavigationTravelPx(p, distance, this.density,
                                                             playerBottomSheetState.frameVelocityFraction)
-                                                },
+                                                    transformOrigin = TransformOrigin(0.5f, 1f)
+                                                    scaleY = 1f + reveal *
+                                                        (playerNavigationStretch(p, distance, this.density,
+                                                            playerBottomSheetState.frameVelocityFraction) - 1f)
+                                                }
+                                                .drawWithContent { if (navDraws) drawContent() },
                                     ) {
                                         if (pureBlack) Color.Black
                                         else MaterialTheme.colorScheme.surfaceContainer
@@ -1797,6 +1812,7 @@ class MainActivity : ComponentActivity() {
                                                 else navBackStackEntry?.destination?.route ?: "",
                                             pureBlack = pureBlack,
                                             capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
+                                            interactionEnabled = shouldShowNavigationBar && !playerSceneBlocksTouch,
                                             onTabSelected = { screen ->
                                                 if (screen.route == Screens.Search.route) {
                                                     onActiveChange(true)
