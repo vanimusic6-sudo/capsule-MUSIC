@@ -725,7 +725,7 @@ class MusicService :
                                 false
                             } else {
                                 (player.playbackState == Player.STATE_READY &&
-                                    player.totalBufferedDuration >= 8_000L) ||
+                                    AudioBufferStallPolicy.currentItemHeadroomMs(player.bufferedPosition, player.currentPosition) >= 8_000L) ||
                                     (holdElapsedMs < 250L &&
                                         player.playbackState == Player.STATE_BUFFERING)
                             }
@@ -888,7 +888,7 @@ class MusicService :
                 currentIsPlaying = player.isPlaying,
                 currentPositionMs = player.currentPosition,
                 currentIsVideo = isCurrentCapsuleVideoItem() || isCompanionVideoRequested(),
-                currentBufferedAheadMs = player.totalBufferedDuration.coerceAtLeast(0L),
+                currentBufferedAheadMs = AudioBufferStallPolicy.currentItemHeadroomMs(player.bufferedPosition, player.currentPosition),
                 currentDurationMs = player.duration.takeIf { it > 0L && it != C.TIME_UNSET }
                     ?: player.currentMetadata?.duration?.takeIf { it > 0 }?.toLong()?.times(1_000L)
                     ?: C.TIME_UNSET,
@@ -1504,7 +1504,7 @@ class MusicService :
                     !playbackPositionGeneration.isCurrent(generation)
                 ) return@launch
 
-                val bufferedAheadMs = player.totalBufferedDuration.coerceAtLeast(0L)
+                val bufferedAheadMs = AudioBufferStallPolicy.currentItemHeadroomMs(player.bufferedPosition, player.currentPosition)
                 val growthMs = (player.bufferedPosition - beforeBufferedPositionMs).coerceAtLeast(0L)
                 if (!AudioBufferStallPolicy.shouldRefresh(
                         buffering = player.playbackState == Player.STATE_BUFFERING,
@@ -1543,7 +1543,14 @@ class MusicService :
                     ) handleTerminalPlaybackError()
                     return@launch
                 }
-                val delayMs = playbackRecoveryCoordinator.nextRetryDelayMs(id) ?: return@launch
+                val delayMs = playbackRecoveryCoordinator.nextRetryDelayMs(id)
+                if (delayMs == null) {
+                    // Other recovery paths may already have consumed the
+                    // shared retry budget. Do not silently abandon BUFFERING.
+                    Timber.tag("PlaybackRecovery").w("audio-buffer-stall shared retry budget exhausted id=%s", id)
+                    handleTerminalPlaybackError()
+                    return@launch
+                }
                 audioBufferStallRefreshes.remove(id)
                 audioBufferStallRefreshes[id] = attempts + 1
                 if (audioBufferStallRefreshes.size > 64) {
@@ -4353,7 +4360,7 @@ class MusicService :
             playWhenReady = player.playWhenReady,
             buffering = player.playbackState == Player.STATE_BUFFERING,
             ready = player.playbackState == Player.STATE_READY,
-            bufferedAheadMs = player.totalBufferedDuration.takeIf { it >= 0L },
+            bufferedAheadMs = AudioBufferStallPolicy.currentItemHeadroomMs(player.bufferedPosition, player.currentPosition),
         )
     }
 

@@ -17,6 +17,15 @@ class AudioBufferStallPolicyTest {
         buffering, playWhenReady, connected, blocked, isVideo, ahead, growth,
     )
 
+    @Test fun currentItemHeadroomCannotCountNextTrackOrUnknownPositions() {
+        val policy = AudioBufferStallPolicy
+        assertTrue(policy.currentItemHeadroomMs(10_000L, 9_000L) == 1_000L)
+        assertTrue(policy.currentItemHeadroomMs(10_000L, 10_000L) == 0L)
+        assertTrue(policy.currentItemHeadroomMs(5_000L, 10_000L) == 0L)
+        assertTrue(policy.currentItemHeadroomMs(Long.MIN_VALUE + 1, 1_000L) == 0L)
+        assertTrue(policy.currentItemHeadroomMs(10_000L, -1L) == 0L)
+    }
+
     @Test fun completelyStalledStartupAndMidSongRebufferRecoverWithinBoundedWindows() {
         assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS in 10_000L..14_000L)
         assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS +

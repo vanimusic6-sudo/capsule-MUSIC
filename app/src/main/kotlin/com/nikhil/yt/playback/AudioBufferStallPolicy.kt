@@ -55,6 +55,11 @@ internal object AudioBufferStallPolicy {
                 (contentLengthBytes ?: 0L) >= LONG_FORM_THRESHOLD_BYTES ||
                 observedStalls > 0)
 
+    /** Media3 totalBufferedDuration includes subsequent media items. */
+    fun currentItemHeadroomMs(bufferedPositionMs: Long, currentPositionMs: Long): Long =
+        if (bufferedPositionMs < 0L || currentPositionMs < 0L || bufferedPositionMs <= currentPositionMs) 0L
+        else bufferedPositionMs - currentPositionMs
+
     fun shouldRefresh(
         buffering: Boolean,
         playWhenReady: Boolean,
