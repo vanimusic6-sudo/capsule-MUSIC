@@ -656,7 +656,9 @@ fun CapsuleMiniPlayer(
                         }
                     },
                     visible = visualsActive,
-                    marqueeEnabled = decorativeMotion,
+                    // Do not reset a moving marquee at the start of a visible transition.
+                    // It stops only after Mini has passed its zero-alpha boundary.
+                    marqueeEnabled = visualsActive,
                     modifier =
                         Modifier.weight(1f),
                 )
