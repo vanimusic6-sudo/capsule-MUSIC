@@ -1529,7 +1529,7 @@ class MusicService :
                     delay(AudioBufferStallPolicy.REBUFFER_WAIT_MS)
                     continue
                 }
-                if (playbackRecoveryCoordinator.waitingForNetworkConnection.value ||
+                if (playbackRecoveryCoordinator.isNetworkRecoveryActive() ||
                     streamRetryJob?.isActive == true
                 ) {
                     // A retry can finish without emitting another BUFFERING
@@ -1550,7 +1550,7 @@ class MusicService :
                     if (player.currentMediaItem?.mediaId == id &&
                         player.playbackState == Player.STATE_BUFFERING &&
                         player.playWhenReady && isNetworkConnected.value &&
-                        !playbackRecoveryCoordinator.waitingForNetworkConnection.value &&
+                        !playbackRecoveryCoordinator.isNetworkRecoveryActive() &&
                         streamRetryJob?.isActive != true
                     ) handleTerminalPlaybackError()
                     return@launch

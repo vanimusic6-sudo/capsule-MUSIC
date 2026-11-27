@@ -67,6 +67,10 @@ internal class PlaybackRecoveryCoordinator(
     private val failureGuard = ConsecutiveTrackFailureGuard(maxConsecutiveTrackFailures)
 
     private var networkRecoveryJob: Job? = null
+    private var networkRecoverySelection: Triple<String, Int, Long>? = null
+
+    fun isNetworkRecoveryActive(): Boolean =
+        waitingForNetworkConnection.value || networkRecoveryJob?.isActive == true
     private var healthyResetJob: Job? = null
     private var healthyResetSelection: Triple<String, Int, Long>? = null
 
@@ -132,12 +136,25 @@ internal class PlaybackRecoveryCoordinator(
     fun cancelNetworkRecovery(clearWaiting: Boolean = true) {
         networkRecoveryJob?.cancel()
         networkRecoveryJob = null
+        networkRecoverySelection = null
         if (clearWaiting) waitingForNetworkConnection.value = false
     }
 
     fun onConnectivityChanged(isConnected: Boolean) {
-        if (!waitingForNetworkConnection.value) return
+        if (!isNetworkRecoveryActive()) return
         if (!isConnected) {
+            // A disconnect during the post-prepare grace is still an active
+            // recovery. Preserve the reconnect intent only for the same item.
+            val selection = networkRecoverySelection
+            if (!playWhenReadyProvider() ||
+                (selection != null && selection != Triple(
+                    currentMediaIdProvider(), currentIndexProvider(), positionGenerationProvider(),
+                ))
+            ) {
+                cancelNetworkRecovery()
+                return
+            }
+            waitingForNetworkConnection.value = true
             // When connectivity drops DURING a scheduled retry, cancel that timer but
             // preserve the waiting flag. Without this, an early reconnect event may
             // arrive while the old timer is still active, get ignored, and leave
@@ -146,16 +163,21 @@ internal class PlaybackRecoveryCoordinator(
             cancelNetworkRecovery(clearWaiting = false)
             return
         }
-        if (networkRecoveryJob?.isActive != true) {
+        if (waitingForNetworkConnection.value && networkRecoveryJob?.isActive != true) {
             recoverFromNetworkError()
         }
     }
 
     fun recoverFromNetworkError() {
+        val mediaId = currentMediaIdProvider()
+        val selection = mediaId?.let { Triple(it, currentIndexProvider(), positionGenerationProvider()) }
+        // Duplicate callbacks from the same load must not consume another slot
+        // while the original prepare/grace is still outstanding.
+        if (networkRecoveryJob?.isActive == true && networkRecoverySelection == selection &&
+            connectedProvider() && !playbackBlockedProvider() && playWhenReadyProvider()
+        ) return
         cancelNetworkRecovery(clearWaiting = true)
-
-        val mediaId = currentMediaIdProvider() ?: return
-        if (!playWhenReadyProvider()) return
+        if (mediaId == null || !playWhenReadyProvider()) return
 
         waitingForNetworkConnection.value = true
         if (!connectedProvider()) {
@@ -166,8 +188,8 @@ internal class PlaybackRecoveryCoordinator(
             return
         }
 
-        val retryDelay = retryBudget.nextDelayMs(mediaId)
-        if (retryDelay == null || playbackBlockedProvider()) {
+        val retryDelay = if (playbackBlockedProvider()) null else retryBudget.nextDelayMs(mediaId)
+        if (retryDelay == null) {
             waitingForNetworkConnection.value = false
             pausePlayback()
             Timber.tag("PlaybackRecovery").w(
@@ -179,6 +201,7 @@ internal class PlaybackRecoveryCoordinator(
 
         val index = currentIndexProvider()
         val positionGeneration = positionGenerationProvider()
+        networkRecoverySelection = Triple(mediaId, index, positionGeneration)
         networkRecoveryJob =
             scopeProvider().launch {
                 delay(retryDelay)
@@ -217,7 +240,6 @@ internal class PlaybackRecoveryCoordinator(
                         currentMediaIdProvider() == mediaId &&
                         currentIndexProvider() == index &&
                         positionGenerationProvider() == positionGeneration &&
-                        connectedProvider() &&
                         !playbackBlockedProvider() &&
                         !recoveryProgressProvider(mediaId)
                     ) {
@@ -229,8 +251,11 @@ internal class PlaybackRecoveryCoordinator(
                         recoverFromNetworkError()
                         return@launch
                     }
+                } else if (!connectedProvider()) {
+                    waitingForNetworkConnection.value = true
                 }
                 networkRecoveryJob = null
+                networkRecoverySelection = null
             }
     }
 

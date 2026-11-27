@@ -161,6 +161,43 @@ class PlaybackRecoveryCoordinatorTest {
     }
 
     @Test
+    fun reconnectDuringPrepareGraceRetainsIntentAndDuplicateErrorsDoNotSpendRetries() = runTest {
+        var connected = true
+        var prepared = 0
+        var ready = false
+        val coordinator = PlaybackRecoveryCoordinator(
+            scopeProvider = { this },
+            maxConsecutiveTrackFailures = 3,
+            currentMediaIdProvider = { "track" },
+            playWhenReadyProvider = { true },
+            currentIndexProvider = { 0 },
+            positionGenerationProvider = { 0L },
+            connectedProvider = { connected },
+            playbackBlockedProvider = { false },
+            healthyPlaybackProvider = { ready },
+            pausePlayback = {},
+            preparePlayback = { prepared++ },
+        )
+        coordinator.recoverFromNetworkError()
+        coordinator.recoverFromNetworkError()
+        advanceTimeBy(1_501L); runCurrent()
+        assertEquals(1, prepared)
+        assertTrue(coordinator.isNetworkRecoveryActive())
+        assertFalse(coordinator.waitingForNetworkConnection.value)
+        connected = false
+        coordinator.onConnectivityChanged(false)
+        assertTrue(coordinator.waitingForNetworkConnection.value)
+        connected = true
+        coordinator.onConnectivityChanged(true)
+        advanceTimeBy(3_001L); runCurrent()
+        assertEquals(2, prepared)
+        ready = true
+        advanceTimeBy(5_001L); runCurrent()
+        assertFalse(coordinator.isNetworkRecoveryActive())
+        assertEquals(6_000L, coordinator.nextRetryDelayMs("track"))
+    }
+
+    @Test
     fun streamBudgetRequiresSustainedActualProgressAndIgnoresDuplicateReadyEvents() = runTest {
         var position = 100L
         var resets = 0

@@ -34,3 +34,7 @@ Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static aud
 - Signed DEV and media-core failed resolving the published Kotlin 2.4.21 Gradle plugin. The same version compiled in the VIDEO and debug APK jobs; treat as likely repository/runner availability, not evidence to downgrade. New CI must confirm.
 - Stream retry counters and the separate audio-stall budget now reset only after 30 seconds of sustained READY/playing with actual position advance and unchanged selection. Queue failure circuit retains the 5-second healthy check. Duplicate READY events no longer restart the healthy timer; buffering/pausing cancels it. Stall watch remains armed when another recovery is in flight.
 - Added regression tests for stable playback, no movement and duplicate READY. Release remains unverified pending new CI and live tests.
+
+## Network recovery ownership
+- Network reconnect now retains intent if connectivity drops during the post-prepare grace period, not only during the initial delay. The buffer watchdog sees the full recovery lease, and duplicate errors for an unchanged selection no longer exhaust retry slots while that lease is active. An active rate-limit block does not spend a retry slot.
+- Added virtual-clock regression for duplicate errors, loss/reconnect during grace, and final retry accounting. No new dependencies or third-party source added.
