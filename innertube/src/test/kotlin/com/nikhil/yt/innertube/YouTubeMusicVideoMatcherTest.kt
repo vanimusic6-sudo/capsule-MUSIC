@@ -125,13 +125,6 @@ class YouTubeMusicVideoMatcherTest {
             "Real artist - Real song", "Real artist • 3:30", 210))
     }
 
-    @Test fun onlyUniqueStrongTypedOfficialVideoMayFinishHedgeEarly() {
-        assertTrue(YouTubeMusicVideoMatcher.canFinishHedgedSearch(270, true, 1))
-        assertTrue(!YouTubeMusicVideoMatcher.canFinishHedgedSearch(224, true, 1))
-        assertTrue(!YouTubeMusicVideoMatcher.canFinishHedgedSearch(300, false, 1))
-        assertTrue(!YouTubeMusicVideoMatcher.canFinishHedgedSearch(300, true, 2))
-    }
-
     @Test fun aCredibleFirstVideoResultSkipsTheRedundantSecondSearch() {
         assertTrue(YouTubeMusicVideoMatcher.needsSecondQuery(null))
         assertTrue(YouTubeMusicVideoMatcher.needsSecondQuery(169))

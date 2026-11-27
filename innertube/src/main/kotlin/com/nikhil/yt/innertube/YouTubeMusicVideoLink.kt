@@ -25,7 +25,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -130,7 +129,6 @@ object YouTubeMusicVideoLinkResolver {
         val videoId: String,
         val title: String,
         val score: Int,
-        val omvVerified: Boolean,
     )
 
     data class CacheRow(
@@ -281,45 +279,7 @@ object YouTubeMusicVideoLinkResolver {
                 // Prefer the same audio/video toggle as the official Music
                 // player. Never infer identity from a similarly named upload
                 // when /next explicitly supplies a verified counterpart.
-                // The existing hedge already spends one search request. If it
-                // completes with exactly one strongly verified official clip,
-                // do not wait for a still-running /next solely for its timeout.
-                // Prefer /next whenever its result is already available.
-                val counterpart = async {
-                    lookupFirstPartyCounterpart(sourceId, beforeMetadataRequest)
-                }
-                val canonical = if (speculativeSearch == null) counterpart.await() else {
-                    val counterpartFinishedFirst = select<Boolean> {
-                        counterpart.onAwait { true }
-                        speculativeSearch.onAwait { false }
-                    }
-                    if (counterpartFinishedFirst || counterpart.isCompleted) {
-                        counterpart.await()
-                    } else {
-                        val candidates = speculativeSearch.await().getOrNull().orEmpty()
-                            .mapNotNull { renderer ->
-                                candidateFromRenderer(
-                                    renderer, sourceId, sourceTitle, sourceTitleNorm,
-                                    sourceArtistNorms, durationSeconds,
-                                )
-                            }.groupBy { it.videoId }.values.mapNotNull { matches ->
-                                matches.maxByOrNull { it.score }
-                            }
-                        val only = candidates.singleOrNull()
-                        if (only != null &&
-                            YouTubeMusicVideoMatcher.canFinishHedgedSearch(only.score, only.omvVerified, candidates.size)
-                        ) {
-                            if (counterpart.isCompleted) counterpart.await()
-                            else {
-                                if (CapsuleVideoRequestGuard.isBlocked()) {
-                                    throw CapsuleVideoRequestGuard.RequestBlockedException("VIDEO search blocked")
-                                }
-                                counterpart.cancel()
-                                null
-                            }
-                        } else counterpart.await()
-                    }
-                }
+                val canonical = lookupFirstPartyCounterpart(sourceId, beforeMetadataRequest)
                 if (canonical != null) {
                     speculativeSearch?.cancel()
                     val link = YouTubeMusicVideoLink(
@@ -426,9 +386,6 @@ object YouTubeMusicVideoLinkResolver {
                 // let an orphan request outlive this VIDEO resolve generation.
                 speculativeSearch?.cancel()
                 val best = candidatesById.values.maxByOrNull { it.score }
-                if (CapsuleVideoRequestGuard.isBlocked()) {
-                    throw CapsuleVideoRequestGuard.RequestBlockedException("VIDEO search blocked")
-                }
                 val link = capsuleNativeVideoBeforeArtistFallback(
                     native = best?.let {
                         YouTubeMusicVideoLink(
@@ -668,7 +625,6 @@ object YouTubeMusicVideoLinkResolver {
             videoId = videoId,
             title = candidateTitle,
             score = score,
-            omvVerified = videoType == MUSIC_VIDEO_TYPE_OMV,
         )
     }
 
