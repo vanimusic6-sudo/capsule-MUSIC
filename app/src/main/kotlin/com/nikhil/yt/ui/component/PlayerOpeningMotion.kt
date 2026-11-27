@@ -2,6 +2,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -31,7 +34,7 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // Critically damped physical travel. Compose carries initial velocity through
 // drag release and direction changes. Threshold is expressed in sheet pixels.
-internal const val PLAYER_OPEN_STIFFNESS = 170f
+internal const val PLAYER_OPEN_STIFFNESS = 145f
 internal const val PLAYER_CLOSE_STIFFNESS = 200f
 internal val PlayerOpenAnimation = spring<Float>(
     dampingRatio = 1f, stiffness = PLAYER_OPEN_STIFFNESS, visibilityThreshold = 1.5f,
@@ -73,8 +76,12 @@ internal fun playerPhase(progress: Float, start: Float, end: Float): Float =
 private fun window(progress: Float, start: Float, end: Float): Float =
     playerPhase(progress, start, end)
 
-/** Home is never transformed or shaded: keep glass sampling and dock coordinates stable. */
-internal fun playerSceneDim(progress: Float): Float = 0f
+/** A separate scrim recedes Home without transforming its glass sampling coordinates. */
+internal fun playerSceneDim(progress: Float): Float = 0.19f * playerSilkPhase(progress, 0.025f, 0.56f)
+
+/** Cheap, soft contact shadow; no live blur or dynamic GPU shadow geometry. */
+internal fun playerLiftShadowAlpha(progress: Float): Float =
+    0.24f * playerSilkPhase(progress, 0.04f, 0.27f) * (1f - playerSilkPhase(progress, 0.68f, 1f))
 // Backdrop is sampled by the glass Mini. Scaling Home shifts that capture.
 internal fun playerSceneScale(progress: Float): Float = 1f
 internal fun playerFrameShadowDp(progress: Float): Float {
@@ -103,7 +110,7 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.82f
+internal const val PLAYER_MINI_FADE_END = 0.74f
 // Begin contact while the page is still optically hidden, then apply pressure
 // over a wider interval. The main frame, alpha and spring are unchanged.
 internal const val PLAYER_NAV_CONTACT = 0.012f
@@ -121,9 +128,9 @@ internal fun playerLowerEdgeTravelPx(progress: Float, available: Float, navigati
         nav * playerNavigationTuck(progress)
 }
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSilkPhase(progress, 0.46f, PLAYER_MINI_FADE_END)
+    1f - playerSilkPhase(progress, 0.39f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float =
-    playerSilkPhase(progress, 0.10f, 0.66f)
+    playerSilkPhase(progress, 0.07f, 0.59f)
 
 /**
  * A small landing accent driven by actual closing velocity. It is zero at
@@ -310,6 +317,11 @@ internal fun PlayerSceneBackdrop(
             .drawWithContent { if (drawHome) drawContent() },
     ) {
         content()
+        // This solid-color child has its own render node. Its opacity updates
+        // without recording Home's entire list or the liquid-glass source.
+        Box(Modifier.matchParentSize().graphicsLayer {
+            alpha = playerSceneDim(currentProgress())
+        }.background(Color.Black))
     }
 }
 
