@@ -2,18 +2,20 @@
 
 ## Design
 
-The actual compact player rises together with the rounded leading edge of the full player. The expanded page keeps its native size and is clipped to the growing contour. Both real surfaces crossfade; there is no separate moving artwork, screenshot, synthetic color plate or Home scaling. Navigation retracts early and returns on the reverse trajectory.
+The actual compact player rises together with the rounded leading edge of the full player. The expanded page keeps its native size and is clipped to the growing contour. Both real surfaces crossfade; there is no separate moving artwork, screenshot, synthetic color plate or Home scaling; a separate lightweight scrim and thin lift shadow establish depth. Navigation retracts early and returns on the reverse trajectory.
 
 ## Active timing contract
 
-- BottomSheetState owns position, intent and inherited velocity. Critically damped springs: opening stiffness 170, closing 200.
+- BottomSheetState owns position, intent and inherited velocity. Critically damped springs: opening stiffness 145, closing 200.
 - PlayerWindow, mini and navigation sample the same normalized position. The dock approach integrates a smooth speed ramp rather than multiplying position by another easing. This keeps the spatial derivative continuous (maximum approximately 1.0583).
-- The expanding lower edge closes the real gap to navigation over progress 0–0.012 while the destination is optically hidden; navigation and the edge then travel together over 0.012–0.38. The broader pressure curve reduces the peak speed while the softer spring also reduces the main frame speed. This uses the actual app navigation height, with no fictitious contact on rail layouts. Destination opacity rises over 0.10–0.66; compact opacity fades over 0.46–0.82. All three use C2 quintic phases. The mini can lead the expanding edge by at most 5 dp with a smooth, reversible bell-shaped offset. Closing reverses these phases.
+- The expanding lower edge closes the real gap to navigation over progress 0–0.012 while the destination is optically hidden; navigation and the edge then travel together over 0.012–0.38. The broader pressure curve reduces the peak speed while the softer spring also reduces the main frame speed. This uses the actual app navigation height, with no fictitious contact on rail layouts. Destination opacity rises over 0.07–0.59; compact opacity fades over 0.39–0.74. All three use C2 quintic phases. The mini can lead the expanding edge by at most 5 dp with a smooth, reversible bell-shaped offset. Closing reverses these phases.
 - The tiny closing-only landing accent is continuous in the actual velocity and builds gradually during existing braking (progress 0.085–0.001), peaks near the compact anchor and relaxes without a separate shove: mini at most +1.75 dp and navigation stretches upward by at most 1.25 dp (3.5% height cap) about the fixed bottom pivot; no negative navigation translation. It vanishes at rest and cannot dismiss playback.
 - Full page geometry starts at the real mini's horizontal inset and rounded contour; native photo and controls are not scaled independently.
 - Retain the compact content (including decoded thumbnail) while fullscreen is visible, without rendering it. Keep background clocks paused, stop marquee once covered, and resume live position updates before the mini is visible. This trades a small amount of retained UI state and event-driven subscriptions for avoiding cold composition on close.
 - Home draw visibility is a derived Boolean; do not invalidate its drawing every frame. Avoid creating a custom contour when the destination is invisible or fully expanded. The hidden mini is placed outside the viewport.
 - Skip drawing fully displaced navigation and disable its tab actions while the player owns touches. Pause visible timeline polling during the finite transition and refresh immediately on settling; the playback clock is unaffected.
+- The home scrim uses a separate solid render node (up to 19% opacity), and the rising edge has a cached 14 dp gradient shadow (up to 24%). Native content has a stable graphics layer, independent of the outer animated outline. This adds small render-node overhead rather than a live blur.
+- Prepare the destination on press, defer video ambient sampling until the sheet settles, and repeat keyboard focus clearing only if Search had pending input. Playback and video rendering remain live.
 - No new dependencies or external source excerpts.
 
 ## References
