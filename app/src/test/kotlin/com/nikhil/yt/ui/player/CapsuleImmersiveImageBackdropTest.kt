@@ -234,6 +234,27 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun upperSubjectDoesNotReappearAsAReflectedLowerGradient() {
+        // Direct field isolates the continuation from label/ground heuristics.
+        val field = CapsuleColorField(32, 24, List(32 * 24) { i ->
+            val x = i % 32
+            val y = i / 32
+            when {
+                y < 10 -> androidx.compose.ui.graphics.Color(0xFFFF0000)
+                x < 16 -> androidx.compose.ui.graphics.Color(0xFF207070)
+                else -> androidx.compose.ui.graphics.Color(0xFF2030C0)
+            }
+        })
+        val page = capsuleImmersiveImageBackdropBitmap(field, 0.60f).asAndroidBitmap()
+        for (y in (page.height * 0.80f).toInt() until page.height) {
+            for (x in listOf(16, page.width / 2, page.width - 17)) {
+                val pixel = page.getPixel(x, y)
+                assertTrue("Upper red subject must not return below artwork",
+                    (pixel ushr 16 and 255) < 50)
+            }
+        }
+    }
+
     @Test fun darkMetadataRequiresNearlyWhiteNeutralBackground() {
         val ColorWhite = androidx.compose.ui.graphics.Color.White
         for (argb in listOf(0xFFFFE940, 0xFF94B8C0, 0xFFB4B4B4, 0xFFCD9B82)) {

@@ -296,21 +296,23 @@ internal fun Bitmap.capsuleImmersivePhotoBlur(aspect: Float, landscape: Boolean)
             }
         }
     }
+    // Start with a light diffusion so the transition does not abruptly
+    // exchange the sharp image for a uniformly blurred copy.
     repeat(2) {
-        pass(source, scratch, true, 5)
-        pass(scratch, source, false, 5)
+        pass(source, scratch, true, 2)
+        pass(scratch, source, false, 2)
     }
     val offset = h - stripH
     val soft = source.copyOfRange(offset * w, source.size)
     repeat(2) {
-        pass(source, scratch, true, 10)
-        pass(scratch, source, false, 10)
+        pass(source, scratch, true, 13)
+        pass(scratch, source, false, 13)
     }
     val result = IntArray(w * stripH)
     for (y in 0 until stripH) {
         val fraction = IMMERSIVE_BLUR_STRIP_START +
             (1f - IMMERSIVE_BLUR_STRIP_START) * y / (stripH - 1)
-        val mix = immersiveSmootherStep(0.67f, 0.96f, fraction)
+        val mix = immersiveSmootherStep(0.66f, 0.94f, fraction)
         val alpha = (immersiveBlurredPhotoAlpha(fraction) * 255f + 0.5f).toInt().coerceIn(0, 255)
         for (x in 0 until w) {
             val i = y * w + x
@@ -549,15 +551,32 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
             androidx.compose.ui.graphics.lerp(field.cell(x0, y0), field.cell(x0 + 1, y0), fx),
             androidx.compose.ui.graphics.lerp(field.cell(x0, y0 + 1), field.cell(x0 + 1, y0 + 1), fx), fy)
     }
+    // Metrolist's useful visual idea is progressive photographic diffusion.
+    // Unlike its reflected bleed, our continuation has no reversed Y mapping:
+    // lower crop colours feed broad, curved gradient lobes, not another photo.
+    // Preserve the cleaned surround extraction for black/white and solid sleeves.
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) {
-        val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
-        // Complex covers use the pre-Metrolist Capsule spatial mapping exactly.
-        // The solid-surround renderer is independent and retains its current geometry.
-        val sourceX = if (ground == null) capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
-            else solidImmersiveBackdropSourceX(pageX, pageY, stage)
-        val visibleY = if (ground == null) capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
-            else solidImmersiveBackdropSourceY(pageX, pageY, stage)
-        val color = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
+        val pageY = (y + 0.5f) / PAGE_ROWS
+        val pageX = (x + 0.5f) / PAGE_COLUMNS
+        val progress = immersiveSmootherStep(stage * 0.70f, 1f, pageY)
+        val flow = sin(2f * PI.toFloat() * (pageY * 1.12f + pageX * 0.38f + 0.16f))
+        val cross = cos(2f * PI.toFloat() * (pageY * 0.61f - pageX * 0.27f))
+        val center = (pageX + progress * (0.10f * flow + 0.025f * cross))
+            .coerceIn(0f, 1f)
+        // Fixed lower-crop neighbourhood: no return to upper subjects/logos.
+        // Grow the lateral footprint with depth, while retaining left/right hue.
+        val spread = 0.045f + 0.11f * progress
+        val near = sample(center, 0.94f)
+        val middle = sample(center - spread, 0.80f)
+        val far = sample(center + spread, 0.69f)
+        val tail = androidx.compose.ui.graphics.lerp(
+            near, androidx.compose.ui.graphics.lerp(middle, far, 0.5f),
+            0.28f + 0.32f * progress,
+        )
+        val photo = sample(pageX, (pageY / stage).coerceIn(0f, 1f))
+        val color = androidx.compose.ui.graphics.lerp(
+            photo, tail, immersiveSmootherStep(stage * 0.70f, stage, pageY),
+        )
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }
