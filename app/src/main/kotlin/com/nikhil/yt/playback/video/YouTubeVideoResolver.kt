@@ -124,7 +124,9 @@ object YouTubeVideoResolver {
     ) : IllegalStateException(message, cause)
 
     private val cache = VideoStreamCache<ResolvedVideo>(maxEntries = 64) {
-        it.expiresAtMs > System.currentTimeMillis() + CACHE_SAFETY_MS
+        it.expiresAtMs > System.currentTimeMillis() + CACHE_SAFETY_MS &&
+            !VideoRejectedLinks.isRejected(it.videoStreamUrl) &&
+            it.audioStreamUrl?.let(VideoRejectedLinks::isRejected) != true
     }
 
     /*
@@ -337,10 +339,11 @@ object YouTubeVideoResolver {
         muxedOnly: Boolean,
         failedBackend: String? = null,
         refresh: Boolean = false,
+        freshWebOnly: Boolean = false,
         beforeMetadataRequest: suspend () -> Unit = CapsuleVideoRequestGuard::beforeMetadataRequest,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
-        cache[key]?.let { return capsuleVideoBindSource(it, sourceMediaId) }
+        if (!refresh) cache[key]?.let { return capsuleVideoBindSource(it, sourceMediaId) }
 
         if (CapsuleVideoRequestGuard.isBlocked()) {
             throw CapsuleVideoRequestGuard.RequestBlockedException(
@@ -354,7 +357,7 @@ object YouTubeVideoResolver {
             if (waitMs >= 300L) Timber.tag(TAG).i(
                 "VIDEO resolve queue clip=%s waitMs=%d", videoId, waitMs,
             )
-            cache[key]?.let { return@withLock capsuleVideoBindSource(it, sourceMediaId) }
+            if (!refresh) cache[key]?.let { return@withLock capsuleVideoBindSource(it, sourceMediaId) }
             val admissionStartNs = System.nanoTime()
             beforeMetadataRequest()
             val admissionWaitMs = (System.nanoTime() - admissionStartNs).coerceAtLeast(0L) / 1_000_000L
@@ -369,7 +372,13 @@ object YouTubeVideoResolver {
             val tryWeb = eligibleForWeb &&
                 primaryRouteHealth.shouldTryWeb(CapsuleInnerTubeXPlayer.sessionIdentity())
             var missedWebDeadline = false
-            val remote = if (tryWeb) {
+            val remote = if (freshWebOnly) {
+                // A refused CDN URL is not evidence that the /player route is dead.
+                // One fresh WEB resolve, within its existing budget, before legacy fallback.
+                withTimeoutOrNull(CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight)) {
+                    CapsuleWebVideoResolver.resolve(videoId, quality)
+                } ?: throw java.io.IOException("Fresh VIDEO WEB stream unavailable")
+            } else if (tryWeb) {
                 val preferredStart = SystemClock.elapsedRealtime()
                 capsuleFastPrimaryOrFallback(
                     primaryBudgetMs = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight),
@@ -399,6 +408,9 @@ object YouTubeVideoResolver {
                 callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
             }
             val resolved = remote.toResolved(sourceMediaId)
+            if (VideoRejectedLinks.isRejected(resolved.videoStreamUrl) ||
+                resolved.audioStreamUrl?.let(VideoRejectedLinks::isRejected) == true
+            ) throw java.io.IOException("VIDEO resolver returned a previously refused link")
             if (missedWebDeadline) primaryRouteHealth.onWebDeadline(videoId)
             cache.put(videoId, key, resolved)
             resolved
@@ -534,6 +546,7 @@ object YouTubeVideoResolver {
     /** Recovery resolves the already matched clip; it never searches again. */
     suspend fun recover(
         failed: ResolvedVideo, quality: CapsuleVideoQuality, muxedOnly: Boolean,
+        refreshWebFirst: Boolean = false,
     ): Result<ResolvedVideo> = try {
         // Invalidate in the very same remote request that resolves again.
         // An asynchronous invalidate could otherwise erase the new inventory.
@@ -541,8 +554,9 @@ object YouTubeVideoResolver {
         CapsuleWebVideoExtractor.invalidateCachedInventory()
         Result.success(resolveExact(
             failed.sourceMediaId, failed.videoId, quality, muxedOnly,
-            failedBackend = failed.backend,
+            failedBackend = if (refreshWebFirst) null else failed.backend,
             refresh = true,
+            freshWebOnly = refreshWebFirst,
         ))
     } catch (cancelled: CancellationException) {
         throw cancelled

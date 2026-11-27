@@ -1313,25 +1313,41 @@ class MusicService :
         if (!recoverable || stream == null || videoRecoveryAttempts >= 2 ||
             CapsuleVideoRequestGuard.isBlocked()
         ) { failVideoSession(mediaId, failure); return }
-        val attempt = ++videoRecoveryAttempts
         val lease = videoSessionGeneration
         videoPlaybackState.value = state.copy(
             phase = CapsuleVideoPhase.RECOVERING, firstFrameReady = false,
         )
         videoRecoveryJob?.cancel()
         videoRecoveryJob = scope.launch {
-            Timber.tag("CapsuleVideo").i("VIDEO recover clip=%s attempt=%s backend=%s", stream.videoId, attempt, stream.backend)
-            val result = withContext(Dispatchers.IO) {
-                YouTubeVideoResolver.recover(stream, capsuleVideoQuality, muxedOnly = attempt == 2)
+            var lastFailure = failure
+            while (videoRecoveryAttempts < 2 && !CapsuleVideoRequestGuard.isBlocked()) {
+                val attempt = ++videoRecoveryAttempts
+                val refreshWebFirst = attempt == 1 &&
+                    stream.backend == com.nikhil.yt.playback.video.CapsuleWebVideoResolver.BACKEND
+                Timber.tag("CapsuleVideo").i(
+                    "VIDEO recover clip=%s attempt=%s backend=%s refreshWeb=%s",
+                    stream.videoId, attempt, stream.backend, refreshWebFirst,
+                )
+                val result = withContext(Dispatchers.IO) {
+                    YouTubeVideoResolver.recover(
+                        stream, capsuleVideoQuality, muxedOnly = attempt == 2,
+                        refreshWebFirst = refreshWebFirst,
+                    )
+                }
+                if (lease != videoSessionGeneration || player.currentMediaItem?.mediaId != mediaId ||
+                    videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO
+                ) return@launch
+                val refreshed = result.getOrNull()
+                if (refreshed != null) {
+                    videoRecoveryJob = null
+                    startVideoSession(mediaId, refreshed)
+                    return@launch
+                }
+                lastFailure = result.exceptionOrNull() ?: lastFailure
             }
-            if (lease != videoSessionGeneration || player.currentMediaItem?.mediaId != mediaId ||
-                videoPlaybackState.value.preferredMode != CapsulePlaybackMode.VIDEO
-            ) return@launch
             videoRecoveryJob = null
-            result.fold(
-                onSuccess = { refreshed -> startVideoSession(mediaId, refreshed) },
-                onFailure = { cause -> failVideoSession(mediaId, cause) },
-            )
+            if (lease == videoSessionGeneration && player.currentMediaItem?.mediaId == mediaId)
+                failVideoSession(mediaId, lastFailure)
         }
     }
 
@@ -5347,11 +5363,14 @@ class MusicService :
                 .addInterceptor(CapsuleVideoStreamInterceptor())
                 .build()
 
-        val httpUpstream = CapsuleVideoHttp3Transport.createUpstream(
+        val rawVideoUpstream = CapsuleVideoHttp3Transport.createUpstream(
             context = this,
             okhttpClient = videoHttpClient,
             explicitProxyConfigured = YouTube.streamProxy != null,
         )
+        val httpUpstream = DataSource.Factory {
+            com.nikhil.yt.playback.video.CapsuleVideoLinkDataSource(rawVideoUpstream.createDataSource())
+        }
         return CacheDataSource
             .Factory()
             .setCache(videoCache)

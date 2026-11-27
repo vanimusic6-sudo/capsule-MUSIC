@@ -133,6 +133,7 @@ internal fun capsuleIndexedDashDurationMs(manifest: String): Long? {
 internal fun capsuleVideoInitialPosition(
     item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
     measuredReadyMs: Long? = null,
+    canonicalDurationMs: Long? = null,
 ): Long? {
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
     val duration = when (resolved.delivery) {
@@ -145,6 +146,10 @@ internal fun capsuleVideoInitialPosition(
         // this to avoid decoding the first 0s frame and then chasing MUSIC
         // forward by 17s (observed on device at 16:09:57).
         CapsuleVideoDelivery.SABR -> resolved.sabrSpec?.durationMs ?: return null
+        // Only the very same clip may inherit MUSIC's known duration.
+        // Different official video matches can have intros/outros and a different EOF.
+        CapsuleVideoDelivery.PROGRESSIVE -> canonicalDurationMs
+            ?.takeIf { resolved.sourceMediaId == resolved.videoId } ?: return null
         else -> return null
     }
     if (duration !in 10_000L..43_200_000L) return null
@@ -718,6 +723,7 @@ internal class CapsuleVideoSession(
                     YouTubeVideoResolver.ResolvedVideo)?.delivery?.let(readinessEstimator::prediction)
                 val initialPosition = capsuleVideoInitialPosition(
                     item, audio.currentPosition, audio.isPlaying, learnedLatency,
+                    canonicalDurationMs = capsuleKnownDuration(audio.duration),
                 )
                 if (initialPosition != null) {
                     video.setMediaItem(item, initialPosition)

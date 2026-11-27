@@ -85,7 +85,12 @@ internal object CapsuleWebVideoExtractor {
                     if (identity != CapsuleInnerTubeXPlayer.sessionIdentity()) throw CancellationException("VIDEO session changed")
                     val inventory = context.inventory.get()?.takeIf { it.videoId == videoId }
                     val index = context.index.get()?.takeIf { it.videoId == videoId }
-                    val selected = if (stream.sabrVideoBootstrap == null) context.selectQuality(stream, inventory, maxHeight) else stream
+                    // For initial selection use InnerTubeX's own resolved contract when
+                    // it already satisfies the requested cap. Avoid replacing a signed
+                    // representation with an inventory URL reconstructed by us.
+                    val selected = if (stream.sabrVideoBootstrap == null &&
+                        (stream.videoHeight ?: 0) !in 1..maxHeight
+                    ) context.selectQuality(stream, inventory, maxHeight) else stream
                     if (stream.sabrVideoBootstrap == null) {
                         context.cached = Cached(stream, inventory, index, now, epoch).also { it.selections[maxHeight] = selected }
                     }

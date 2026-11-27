@@ -50,8 +50,8 @@ internal class CapsuleVideoDirectMediaSourceFactory(
 
     private val progressive = ProgressiveMediaSource.Factory(upstream)
         .setContinueLoadingCheckIntervalBytes(64 * 1024)
-        .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(1))
-    private var errorPolicy: LoadErrorHandlingPolicy = DefaultLoadErrorHandlingPolicy(1)
+        .setLoadErrorHandlingPolicy(CapsuleVideoLoadErrorPolicy())
+    private var errorPolicy: LoadErrorHandlingPolicy = CapsuleVideoLoadErrorPolicy()
     private var drmProvider: DrmSessionManagerProvider? = null
 
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {

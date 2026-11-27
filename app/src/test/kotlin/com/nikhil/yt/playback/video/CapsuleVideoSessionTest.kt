@@ -178,6 +178,21 @@ class CapsuleVideoSessionTest {
         ))
     }
 
+    @Test fun progressiveOnlyInheritsDurationForTheExactSameClip() {
+        val tag = YouTubeVideoResolver.ResolvedVideo(
+            sourceMediaId = "abcdefghijk", videoId = "abcdefghijk",
+            videoStreamUrl = "https://rr.googlevideo.com/videoplayback",
+            videoFormat = YouTubeVideoResolver.StreamFormat(136, 1280, 720, "720p"),
+            expiresAtMs = Long.MAX_VALUE,
+        )
+        val item = MediaItem.Builder().setMediaId("abcdefghijk")
+            .setUri("https://example.test/clip").setTag(tag).build()
+        assertEquals(12_000L, capsuleVideoInitialPosition(item, 10_000L, true, canonicalDurationMs = 60_000L))
+        assertNull(capsuleVideoInitialPosition(item, 58_000L, true, canonicalDurationMs = 60_000L))
+        assertNull(capsuleVideoInitialPosition(item.buildUpon().setTag(tag.copy(sourceMediaId = "other")).build(),
+            10_000L, true, canonicalDurationMs = 60_000L))
+    }
+
     @Test fun nativeSabrStartsNearMusicInsteadOfSeekingSeventeenSecondsAfterDecoderPrepare() {
         val sabrSpec = com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec(
             ustreamerConfigBase64 = "AQIDBAUGBwg=",

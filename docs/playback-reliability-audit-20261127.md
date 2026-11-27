@@ -45,3 +45,10 @@ Baseline: 8c835e57e0584aa948c99019cce772aeffe7ccd9. This is a partial static aud
 - Real loader may request second future period; optional prefetch remains one ahead. Shared prefetch observes loader promotion. Stop default retries for obsolete loads and nested terminal resolver errors. Download rejection is tracked independently and failed delegate URLs discarded.
 - SABR empty completion is a failure; first chunk deadline 8s, steady-state deadline unchanged. Add total audio-ready duration across retry-related IDLE events. Age/auth restrictions and rate-limit handling unchanged.
 - Device retest and CI required; no new dependency or third-party code.
+
+## Second device capture (bd5298c): VIDEO-only changes
+- Audio: 32 opens, zero refusals. The previous failing track resolved through WEB_REMIX; no AUDIO engine changes in this package.
+- Three progressive VIDEO sessions all failed 403 after initial readiness and alignment seek. The resolver immediately excluded the only successful WEB backend and used legacy extractors that returned no playable stream. First recovery now tries one fresh same-backend WEB resolution, not its cached inventory; second recovery remains bounded and muxed-only. Failed extraction consumes its slot but no longer prevents the remaining attempt. Guard/cancellation retained.
+- Physical VIDEO CDN ranges now retire refused URLs in separate bounded in-memory state, fail fast on terminal HTTP statuses, and log safe range coordinates and salted link references. Cache entries with rejected direct URLs cannot be reused. No credentials or URLs logged by new instrumentation.
+- Exact canonical progressive clips may prepare near the current MUSIC position using known duration; distinct clips retain existing duration-discovery logic. Prefer the extractor's own signed representation on initial extraction if within the quality cap; inventory still serves explicit cached quality selection.
+- CI and field retest needed; these are targeted architectural changes, not evidence all video CDN failures are gone.
