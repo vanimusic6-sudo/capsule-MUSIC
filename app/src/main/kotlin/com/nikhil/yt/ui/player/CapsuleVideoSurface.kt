@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -80,10 +81,15 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     )
     Box(modifier.clipToBounds().background(Color.Black)) {
       CapsuleVideoViewport(viewportSize) {
-        if (active) CapsuleVideoTextureOutput(
-            service, player, retention, presentation.coverSurface, state.firstFrameReady,
-            ambientEnabled = ambientEnabled, audioMediaId = state.mediaId, ambientSink = ambientSink,
-        )
+        if (active) {
+            val revision = service.videoSurfaceRevision.collectAsState().value
+            key(revision) {
+                CapsuleVideoTextureOutput(
+                    service, player, retention, presentation.coverSurface, state.firstFrameReady,
+                    ambientEnabled = ambientEnabled, audioMediaId = state.mediaId, ambientSink = ambientSink,
+                )
+            }
+        }
         if (frame != null) {
             Image(
                 bitmap = remember(frame.bitmap) { frame.bitmap.asImageBitmap() },
@@ -290,15 +296,21 @@ private fun CapsuleVideoTextureOutput(
         // Observe native attachment/pre-draw once, then sleep. Never poll the
         // surface every 32 ms, or replace Media3's SurfaceTextureListener.
         DisposableEffect(view, player, service, owner) {
-            player.setVideoTextureView(view)
             val binding = CapsuleVideoSurfaceBinding(
                 view = view,
                 isReady = { view.isAvailable && view.width > 0 && view.height > 0 },
                 onAttached = {
+                    // Register the logical output first; a frame callback from a
+                    // fast cached decoder must never arrive before the session
+                    // knows that this real TextureView is available.
                     service.attachVideoSurface(owner)
+                    player.setVideoTextureView(view)
                     Timber.tag("CapsuleVideo").i("VIDEO surface-bound available=true width=%d height=%d", view.width, view.height)
                 },
-                onDetached = { service.detachVideoSurface(owner) },
+                onDetached = {
+                    service.detachVideoSurface(owner)
+                    player.clearVideoTextureView(view)
+                },
             )
             onDispose {
                 binding.dispose()

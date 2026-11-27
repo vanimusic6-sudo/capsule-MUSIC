@@ -1089,6 +1089,7 @@ class MusicService :
     private var videoReturnGapJob: Job? = null
     private var videoScreenVisible = true
     private var videoSurfaceOwner: Any? = null
+    internal val videoSurfaceRevision = MutableStateFlow(0L)
     private var activeResolvedVideo: YouTubeVideoResolver.ResolvedVideo? = null
     private var videoRecoveryJob: Job? = null
     private var videoRecoveryAttempts = 0
@@ -1181,6 +1182,12 @@ class MusicService :
                     videoRecoveryAttempts = 0
                     Timber.tag("CapsuleVideo").i("VIDEO recovery budget reset after sustained playback id=%s", currentId)
                 }
+            },
+            onSurfaceRecovery = { currentId ->
+                if (videoPlaybackState.value.mediaId == currentId &&
+                    player.currentMediaItem?.mediaId == currentId &&
+                    videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO
+                ) videoSurfaceRevision.value += 1L
             },
             onFailure = { failedId, failure -> recoverVideoSession(failedId, failure) },
             onEnded = { endedId -> finishCapsuleVideoTrack(endedId) },

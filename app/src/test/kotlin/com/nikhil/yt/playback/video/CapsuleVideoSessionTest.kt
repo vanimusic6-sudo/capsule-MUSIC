@@ -92,7 +92,7 @@ class CapsuleVideoSessionTest {
             event()
         }
     }
-    private class Fixture(scope: kotlinx.coroutines.CoroutineScope) {
+    private class Fixture(scope: kotlinx.coroutines.CoroutineScope, recoverSurface: Boolean = false) {
         var clockMs = 0L
         val music = Decoder().apply { state = Player.STATE_READY; playing = true }
         val clip = Decoder()
@@ -103,11 +103,13 @@ class CapsuleVideoSessionTest {
         val failures = mutableListOf<Throwable>()
         val endings = mutableListOf<String>()
         val sustained = mutableListOf<String>()
+        val surfaceRecoveries = mutableListOf<String>()
         val session = CapsuleVideoSession(music.player, clip.player, scope,
             { owned += it; music.volume = if (it) 0f else 1f },
             { frames += it }, { _, error -> failures += error }, { endings += it },
             { hidden += it }, { _, loading -> buffering += loading }, clockMs = { clockMs },
-            onSustainedPlayback = { sustained += it })
+            onSustainedPlayback = { sustained += it },
+            onSurfaceRecovery = if (recoverSurface) ({ id -> surfaceRecoveries += id }) else null)
         fun start() {
             session.setSurfaceAttached(true)
             session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f)
@@ -142,9 +144,9 @@ class CapsuleVideoSessionTest {
         f.music.position = 12_000L
         f.session.setSurfaceAttached(true)
         f.session.start("song", indexedVideoItem(), 0.8f)
-        assertEquals(14_000L, f.clip.position)
+        assertEquals(15_200L, f.clip.position)
         assertTrue(f.clip.seeks.isEmpty())
-        f.music.position = 14_050L
+        f.music.position = 15_250L
         f.clip.ready(); f.clip.frame()
         advanceTimeBy(261L); runCurrent()
         assertEquals(listOf("song"), f.frames)
@@ -160,8 +162,8 @@ class CapsuleVideoSessionTest {
         // Original October 25 capture: 1.4s anticipation left MUSIC
         // ~582ms ahead after a 2s indexed DASH startup; alignment then
         // caused a second buffered correction. Now stay inside 400ms.
-        assertEquals(7_440L, f.clip.position)
-        f.music.position = 7_500L
+        assertEquals(8_640L, f.clip.position)
+        f.music.position = 8_700L
         f.clip.ready()
         f.clip.frame()
         advanceTimeBy(261L); runCurrent()
@@ -172,7 +174,7 @@ class CapsuleVideoSessionTest {
 
     @Test fun indexedDashPreseekFallsBackNearClipEndOrWithoutDuration() {
         val item = indexedVideoItem(seconds = 60)
-        assertEquals(12_000L, capsuleVideoInitialPosition(item, 10_000L, true))
+        assertEquals(13_200L, capsuleVideoInitialPosition(item, 10_000L, true))
         assertEquals(10_000L, capsuleVideoInitialPosition(item, 10_000L, false))
         assertNull(capsuleVideoInitialPosition(item, 58_000L, true))
         assertNull(capsuleVideoInitialPosition(
@@ -193,6 +195,9 @@ class CapsuleVideoSessionTest {
         assertNull(capsuleVideoInitialPosition(item, 58_000L, true, canonicalDurationMs = 60_000L))
         assertNull(capsuleVideoInitialPosition(item.buildUpon().setTag(tag.copy(sourceMediaId = "other")).build(),
             10_000L, true, canonicalDurationMs = 60_000L))
+        assertEquals(12_000L, capsuleVideoInitialPosition(
+            item.buildUpon().setTag(tag.copy(sourceMediaId = "other", durationMs = 60_000L)).build(),
+            10_000L, true, canonicalDurationMs = 120_000L))
     }
 
     @Test fun nativeSabrStartsNearMusicInsteadOfSeekingSeventeenSecondsAfterDecoderPrepare() {
@@ -528,6 +533,37 @@ class CapsuleVideoSessionTest {
         assertEquals(0f, f.music.volume)
         f.session.stop()
     }
+    @Test fun readyWithoutRenderedFrameRebindsLocallyExactlyOnceAndKeepsMusicAudible() = runTest {
+        val f = Fixture(this, recoverSurface = true)
+        f.start(); f.clip.ready()
+        advanceTimeBy(2_501L); runCurrent()
+        assertEquals(listOf("song"), f.surfaceRecoveries)
+        assertEquals(1, f.clip.prepares)
+        assertEquals(1f, f.music.volume)
+        f.session.setSurfaceAttached(false)
+        f.session.setSurfaceAttached(true)
+        f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertEquals(1, f.clip.prepares)
+        assertTrue(f.failures.isEmpty())
+        f.session.stop()
+    }
+
+    @Test fun persistentReadyWithoutFrameIsLocalFailureEvenIfNetworkKeepsLoading() = runTest {
+        val f = Fixture(this, recoverSurface = true)
+        f.start(); f.clip.ready()
+        repeat(18) {
+            f.clip.buffered = (it + 1L) * 10_000L
+            advanceTimeBy(500L); runCurrent()
+        }
+        assertEquals(listOf("song"), f.surfaceRecoveries)
+        assertTrue(f.failures.single() is IllegalStateException)
+        assertEquals(1f, f.music.volume)
+        assertEquals(1, f.clip.prepares)
+        f.session.stop()
+    }
+
     @Test fun selectedTracksWithoutFirstFrameTimeOutWithoutMutingMusic() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready()
         advanceTimeBy(15_100); runCurrent()

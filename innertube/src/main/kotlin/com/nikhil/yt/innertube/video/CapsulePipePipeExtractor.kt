@@ -10,6 +10,9 @@ import dev.maxrave.pipepipe.extractor.stream.VideoStream
 internal object CapsulePipePipeExtractor {
     private var initialized = false
 
+    @Synchronized
+    fun prepareLocal() = initialize()
+
     private fun initialize() {
         if (!initialized) { NewPipe.init(CapsulePipePipeDownloader()); initialized = true }
     }
@@ -40,6 +43,7 @@ internal object CapsulePipePipeExtractor {
 
     @Synchronized
     fun resolve(id: String, quality: CapsuleNewPipeQuality, muxedOnly: Boolean): CapsuleNewPipeResolved? {
+        VideoExtractionRequests.checkActive()
         initialize()
         val url = "https://www.youtube.com/watch?v=$id"
         val extractor = NewPipe.getServiceByUrl(url).getStreamExtractor(url)

@@ -28,6 +28,7 @@ data class CapsuleResolvedVideo(
     val sabrSpec: CapsuleSabrVideoSpec? = null,
     /** Main-process maintained extractor only; no credentials enter legacy parser IPC. */
     val requestHeaders: Map<String, String> = emptyMap(),
+    val durationMs: Long? = null,
 ) {
     val adaptive: Boolean
         get() = !audioUrl.isNullOrBlank()

@@ -148,7 +148,7 @@ internal fun capsuleVideoInitialPosition(
         CapsuleVideoDelivery.SABR -> resolved.sabrSpec?.durationMs ?: return null
         // Only the very same clip may inherit MUSIC's known duration.
         // Different official video matches can have intros/outros and a different EOF.
-        CapsuleVideoDelivery.PROGRESSIVE -> canonicalDurationMs
+        CapsuleVideoDelivery.PROGRESSIVE -> resolved.durationMs ?: canonicalDurationMs
             ?.takeIf { resolved.sourceMediaId == resolved.videoId } ?: return null
         else -> return null
     }
@@ -164,6 +164,7 @@ internal fun capsuleVideoInitialPosition(
     val prediction = if (!audioPlaying) 0L else (
         measuredReadyMs?.takeIf { it in 700L..6_000L } ?: when (resolved.delivery) {
             CapsuleVideoDelivery.SABR -> 4_500L
+            CapsuleVideoDelivery.DASH -> 3_200L
             else -> 2_000L
         }
     )
@@ -181,6 +182,7 @@ internal class CapsuleVideoCompanion(
     publishStudioPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
     readStudioInteractive: () -> Boolean = { false },
     onSustainedPlayback: (String) -> Unit = {},
+    onSurfaceRecovery: ((String) -> Unit)? = null,
 ) {
     private var idleExpiry: Job? = null
     private val renderers = CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false,
@@ -214,6 +216,7 @@ internal class CapsuleVideoCompanion(
     private val session = CapsuleVideoSession(
         audio, player, scope, onSoundOwned, onReady, onFailure, onEnded, onFrameUnavailable, onBufferingChanged,
         onSustainedPlayback = onSustainedPlayback,
+        onSurfaceRecovery = onSurfaceRecovery,
     )
     init {
         player.addAnalyticsListener(object : AnalyticsListener {
@@ -304,6 +307,7 @@ internal class CapsuleVideoSession(
     private val onBufferingChanged: (String, Boolean) -> Unit = { _, _ -> },
     private val clockMs: () -> Long = SystemClock::elapsedRealtime,
     private val onSustainedPlayback: (String) -> Unit = {},
+    private val onSurfaceRecovery: ((String) -> Unit)? = null,
 ) {
     private var id: String? = null
     private var generation = 0L
@@ -318,6 +322,7 @@ internal class CapsuleVideoSession(
     private var preparedFrameAvailable = false
     private var firstFrame = false
     private var renderedFrameRevision = 0L
+    private var surfaceRecoveryRequested = false
     private var frameReported = false
     private var ownsSound = false
     private var audible = false
@@ -392,7 +397,11 @@ internal class CapsuleVideoSession(
     private val videoListener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
             renderedFrameRevision++
-            if (id == null || !rendering) return
+            if (id == null) return
+            if (!rendering) {
+                Timber.tag("CapsuleVideo").d("VIDEO frame before presentation foreground=%s attached=%s", foreground, surfaceAttached)
+                return
+            }
             seekStartedAtMs?.let {
                 // Learn observed seek cost without letting an anomalous stall
                 // bias later video starts indefinitely.
@@ -700,6 +709,7 @@ internal class CapsuleVideoSession(
         this.startupBudgetMs = startupBudgetMs
         id = mediaId
         surfaceEverAttachedForSession = surfaceAttached
+        surfaceRecoveryRequested = false
         startedAtMs = SystemClock.elapsedRealtime()
         startupReadyMs = 0L
         readyReported = false
@@ -753,11 +763,14 @@ internal class CapsuleVideoSession(
         evaluate()
     }
 
-    private fun needsWatchdog(): Boolean = id != null && audio.playWhenReady &&
-        ((foreground && !surfaceAttached && !surfaceEverAttachedForSession && !committed) ||
-            (rendering && !frameReported) ||
-            ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING) ||
-            (committed && video.playbackState == Player.STATE_READY && video.isPlaying))
+    private fun needsWatchdog(): Boolean = id != null &&
+        ((audio.playWhenReady &&
+            ((foreground && !surfaceAttached && !surfaceEverAttachedForSession && !committed) ||
+                (rendering && !frameReported) ||
+                ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING) ||
+                (committed && video.playbackState == Player.STATE_READY && video.isPlaying))) ||
+            (onSurfaceRecovery != null && !committed && foreground &&
+                ((rendering && ready && !firstFrame) || (surfaceRecoveryRequested && !surfaceAttached))))
 
     private fun ensureWatchdog() {
         if (!needsWatchdog()) {
@@ -770,6 +783,7 @@ internal class CapsuleVideoSession(
         val launched = scope.launch(start = CoroutineStart.LAZY) {
             var startupMs = 0L
             var startupIdleMs = 0L
+            var readyWithoutFrameMs = 0L
             var stallMs = 0L
             var rebufferMs = 0L
             var frozenClockMs = 0L
@@ -817,6 +831,23 @@ internal class CapsuleVideoSession(
                     startupIdleMs = if (progressed) 0L else startupIdleMs + 500L
                 }
                 if (ready && frameReported) { startupMs = 0L; startupIdleMs = 0L }
+                // Network bytes and READY do not prove a frame has reached the
+                // current TextureView. Recreate that local output ONCE, without
+                // restarting extraction, replacing the item or silencing MUSIC.
+                val outputStalled = !committed && foreground && onSurfaceRecovery != null &&
+                    ((rendering && ready && !firstFrame) || (surfaceRecoveryRequested && !surfaceAttached))
+                readyWithoutFrameMs = if (outputStalled) readyWithoutFrameMs + tickMs else 0L
+                if (outputStalled && readyWithoutFrameMs >= 2_000L && !surfaceRecoveryRequested) {
+                    surfaceRecoveryRequested = true
+                    readyWithoutFrameMs = 0L
+                    Timber.tag("CapsuleVideo").w("VIDEO READY without rendered frame; rebind output id=%s", currentId)
+                    onSurfaceRecovery?.invoke(currentId)
+                } else if (outputStalled && readyWithoutFrameMs >= 6_000L) {
+                    // This is a local presentation failure, not a CDN refusal.
+                    // Do not start two pointless extraction/recovery cycles.
+                    fail(IllegalStateException("VIDEO output produced no frame after rebind"))
+                    break
+                }
                 val buffering = (rendering || committed) && audio.playWhenReady &&
                     video.playbackState == Player.STATE_BUFFERING
                 stallMs = if (buffering && !progressed) stallMs + 500L else 0L
@@ -866,6 +897,7 @@ internal class CapsuleVideoSession(
             firstFrame = false
             if (!committed) {
                 frameReported = false
+                if (ownsSound) returnSound()
                 id?.let(onFrameUnavailable)
             }
             if (rendering && !committed) {
@@ -937,6 +969,7 @@ internal class CapsuleVideoSession(
         }
         returnSound()
         firstFrame = false; frameReported = false; aligned = false; catchupPending = false; seekStartedAtMs = null; committed = false; reportedBuffering = false
+        surfaceRecoveryRequested = false
         video.playWhenReady = false
         if (!keepPrepared) {
             preparedFrameAvailable = false

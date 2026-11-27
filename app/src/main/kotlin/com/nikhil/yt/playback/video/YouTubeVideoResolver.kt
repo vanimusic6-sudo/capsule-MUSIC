@@ -100,6 +100,7 @@ object YouTubeVideoResolver {
     val userAgent: String? = null,
     val sabrSpec: com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec? = null,
     val requestHeaders: Map<String, String> = emptyMap(),
+    val durationMs: Long? = null,
     ) {
         val streamUrl: String
             get() = videoStreamUrl
@@ -139,8 +140,8 @@ object YouTubeVideoResolver {
     /**
      * Initiate only the isolated VIDEO process while the foreground MUSIC
      * search runs. Previously its cold Binder/process startup happened
-     * serially AFTER the clip match. This is a single no-network call: it
-     * does not bypass bot guards, prefetch media, or create a second extractor.
+     * serially AFTER the clip match. This also initializes the existing parser
+     * locally; no YouTube request, media prefetch or second extractor.
      */
     private fun startProcessWarmup() {
         if (!processPrewarmStarted.compareAndSet(false, true)) return
@@ -532,6 +533,7 @@ object YouTubeVideoResolver {
             userAgent = userAgent,
             sabrSpec = sabrSpec,
             requestHeaders = requestHeaders,
+            durationMs = durationMs,
         )
     }
 

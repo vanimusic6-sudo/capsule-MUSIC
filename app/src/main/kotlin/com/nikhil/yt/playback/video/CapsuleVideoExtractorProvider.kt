@@ -36,8 +36,11 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         }
         if (method == CapsuleVideoIpc.METHOD_PREPARE) {
             // Crossing this Binder boundary starts the isolated process while
-            // the foreground request is still matching a MUSIC clip. No
-            // Youtube requests, parsers or player clients are invoked here.
+            // the foreground request is still matching a MUSIC clip. Initialize
+            // the existing parser locally, with no YouTube request or decoder.
+            try { CapsuleNewPipeExtractor.preparePipePipe() }
+            catch (_: Exception) { }
+            catch (_: LinkageError) { }
             return Bundle.EMPTY
         }
         if (method == CapsuleVideoIpc.METHOD_CANCEL) {

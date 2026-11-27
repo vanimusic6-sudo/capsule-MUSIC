@@ -30,6 +30,18 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
     private val retryAfter = mutableMapOf<CapsuleVideoRoute, Long>()
     private val botQuietUntil = mutableMapOf<CapsuleVideoRoute, Long>()
     private var lastSuccessful: CapsuleVideoRoute? = null
+    private var pipeAttempted = false
+
+    @Synchronized fun budgetFor(route: CapsuleVideoRoute, parserOnly: Boolean, pipeNetworkFailed: Boolean): Long {
+        if (!parserOnly) return route.budgetMs
+        if (route == CapsuleVideoRoute.PIPEPIPE) {
+            val budget = if (pipeAttempted) 4_200L else 5_200L
+            pipeAttempted = true
+            return budget
+        }
+        if (route == CapsuleVideoRoute.NEWPIPE && pipeNetworkFailed) return 3_200L
+        return route.budgetMs
+    }
 
     /**
      * A new isolated extractor process should start at the last backend that
@@ -125,6 +137,7 @@ internal fun resolveVideoRoutes(
 ): CapsuleNewPipeResolved {
     val failures = mutableListOf<Exception>()
     var consecutiveDnsFailures = 0
+    var pipeNetworkFailed = false
     // A URL can resolve successfully yet fail at the CDN/decoder. Remember
     // this feedback across the next clips, not just this one recovery call.
     CapsuleVideoRoute.entries.firstOrNull { it.wireName == failedBackend }?.let { health?.failure(it) }
@@ -144,7 +157,8 @@ internal fun resolveVideoRoutes(
         VideoExtractionRequests.checkActive()
         val started = System.nanoTime()
         try {
-            VideoExtractionRequests.withRouteBudget(route.budgetMs) { resolve(route) }?.let {
+            val budget = health?.budgetFor(route, parserOnly, pipeNetworkFailed) ?: route.budgetMs
+            VideoExtractionRequests.withRouteBudget(budget) { resolve(route) }?.let {
                 if (!VideoStreamValidation.accepts(it.videoUrl, it.audioUrl, it.dashManifest, it.userAgent, it.delivery, it.qualityLabel) ||
                     !VideoStreamValidation.isFresh(it.expiresAtMs) ||
                     (expectedVideoId != null && it.videoId != expectedVideoId)) {
@@ -171,6 +185,13 @@ internal fun resolveVideoRoutes(
             onFailure(route, failure)
             if (CapsuleNewPipeExtractor.classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
             val kind = CapsuleNewPipeExtractor.classify(failure)
+            if (route == CapsuleVideoRoute.PIPEPIPE && kind == CapsuleNewPipeFailure.NETWORK) pipeNetworkFailed = true
+            // An explicit access/unavailable verdict is not a transport failure.
+            // Keep the existing no-compatible-format case eligible for fallback.
+            if (parserOnly && kind == CapsuleNewPipeFailure.UNAVAILABLE &&
+                !failure.message.orEmpty().startsWith("NewPipe returned no ")) {
+                throw CapsuleVideoRoutesException(kind, failure)
+            }
             val dnsFailure = isVideoDnsFailure(failure)
             if (!dnsFailure && (failure as? CapsuleDirectVideoException)?.penalizeRoute != false)
                 health?.failure(route, kind)

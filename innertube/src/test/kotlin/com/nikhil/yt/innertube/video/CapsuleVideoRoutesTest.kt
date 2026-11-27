@@ -6,6 +6,15 @@ import java.io.IOException
 import java.util.UUID
 
 class CapsuleVideoRoutesTest {
+    @Test fun coldParserGetsOneLongerBudgetButNetworkFallbackIsBounded() {
+        val health = CapsuleVideoRouteHealth()
+        assertEquals(5_200L, health.budgetFor(CapsuleVideoRoute.PIPEPIPE, true, false))
+        assertEquals(4_200L, health.budgetFor(CapsuleVideoRoute.PIPEPIPE, true, false))
+        assertEquals(3_200L, health.budgetFor(CapsuleVideoRoute.NEWPIPE, true, true))
+        assertEquals(6_000L, health.budgetFor(CapsuleVideoRoute.NEWPIPE, true, false))
+        assertEquals(CapsuleVideoRoute.PIPEPIPE.budgetMs, health.budgetFor(CapsuleVideoRoute.PIPEPIPE, false, false))
+    }
+
     private val stream = CapsuleNewPipeResolved("abcdefghijk", "https://rr.googlevideo.com/video", null,
         "360p", 640, 360, 18, -1, Long.MAX_VALUE)
 

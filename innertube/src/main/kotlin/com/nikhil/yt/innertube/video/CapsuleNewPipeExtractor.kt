@@ -55,6 +55,9 @@ enum class CapsuleNewPipeQuality(val maxHeight: Int) {
 object CapsuleNewPipeExtractor {
     private val routeHealth = CapsuleVideoRouteHealth()
 
+    /** Local setup only; never requests a clip or warms the network speculatively. */
+    fun preparePipePipe() = CapsulePipePipeExtractor.prepareLocal()
+
     /** Only a hint; the route-health cooldown and explicit video guard still win. */
     fun restorePreferredRoute(wireName: String?) = routeHealth.restorePreferredRoute(wireName)
     private const val CACHE_SAFETY_MS = 45_000L

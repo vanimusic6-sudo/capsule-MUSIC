@@ -102,6 +102,8 @@ internal fun tokenBackedVideo(stream: ExtractedStream, maxHeight: Int, index: Ca
             expiresAtMs = expires, backend = CapsuleWebVideoResolver.BACKEND,
             maxHeight = maxHeight, userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value,
             requestHeaders = headers,
+            durationMs = stream.mediaMetadata?.durationSeconds?.times(1000L)
+                ?.takeIf { it in 10_000L..43_200_000L },
         )
         return index?.indexed(source) ?: source
     }
