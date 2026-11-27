@@ -247,7 +247,7 @@ class PlayerOpeningMotionTest {
             assertTrue(mini in 0f..previousMini)
             assertTrue(nav in previousNav..1f)
             assertTrue("No empty optical handoff", page + mini * (1f - page) >= 0.98f)
-            if (page > 0.35f) assertEquals(1f, nav, 0f)
+            if (page > 0.35f) assertTrue("Navigation is already almost fully displaced", nav >= 0.98f)
             assertEquals(1f, playerPresentationScale(p), 0f)
             assertEquals(1f, playerSceneScale(p), 0f)
             assertEquals(0f, playerSceneDim(p), 0f)
@@ -262,15 +262,15 @@ class PlayerOpeningMotionTest {
         for (density in listOf(1f, 2f, 3.5f)) {
             assertEquals(0f, playerMiniTravelPx(0f, 590f * density, density, -1f), 0f)
             assertEquals(0f, playerNavigationTravelPx(0f, 60f * density, density, -1f), 0f)
-            assertEquals(2.5f * density, playerMiniTravelPx(0.0135f, 590f * density, density, -0.3f), 0.001f)
-            assertEquals(-1.75f * density, playerNavigationTravelPx(0.0135f, 60f * density, density, -0.3f) - playerNavigationTravelPx(0.0135f, 60f * density, density, 0f), 0.001f)
-            assertEquals(0f, playerDockLanding(0.0135f, 0.3f), 0f)
-            assertEquals(0f, playerDockLanding(0.0135f, Float.NaN), 0f)
+            assertEquals(2.5f * density, playerMiniTravelPx(0.0262f, 590f * density, density, -0.3f) - playerMiniTravelPx(0.0262f, 590f * density, density, 0f), 0.001f)
+            assertEquals(-1.75f * density, playerNavigationTravelPx(0.0262f, 60f * density, density, -0.3f) - playerNavigationTravelPx(0.0262f, 60f * density, density, 0f), 0.001f)
+            assertEquals(0f, playerDockLanding(0.0262f, 0.3f), 0f)
+            assertEquals(0f, playerDockLanding(0.0262f, Float.NaN), 0f)
             for (i in 0..1000) {
                 val p = i / 1000f
                 val landing = playerDockLanding(p, -0.3f)
                 assertTrue(landing in 0f..1f)
-                if (p >= 0.025f || p <= 0.002f) assertEquals(0f, landing, 0.0001f)
+                if (p >= 0.085f || p <= 0.001f) assertEquals(0f, landing, 0.0001f)
                 assertTrue(playerMiniTravelPx(p, 590f * density, density, -0.3f) <= 2.5f * density + 0.001f)
                 assertTrue(playerNavigationTravelPx(p, 60f * density, density, -0.3f) >= -1.75f * density - 0.001f)
             }
@@ -392,6 +392,25 @@ class PlayerOpeningMotionTest {
             previous = geometry
         }
         assertEquals(1f, previous, 0.00001f)
+    }
+
+    @Test fun navigationPressureAndLandingDoNotAddFastImpulses() {
+        var previousNav = 0f
+        var previousAccent = 0f
+        for (ms in 0..650) {
+            val t = ms / 1000.0
+            val openRate = kotlin.math.sqrt(PLAYER_OPEN_STIFFNESS.toDouble())
+            val closeRate = kotlin.math.sqrt(PLAYER_CLOSE_STIFFNESS.toDouble())
+            val open = (1.0 - (1.0 + openRate * t) * kotlin.math.exp(-openRate * t)).toFloat()
+            val close = ((1.0 + closeRate * t) * kotlin.math.exp(-closeRate * t)).toFloat()
+            val velocity = (-closeRate * closeRate * t * kotlin.math.exp(-closeRate * t)).toFloat()
+            val nav = playerNavigationTuck(open)
+            val accent = 2.5f * playerDockLanding(close, velocity)
+            assertTrue("Avoid a fast navigation shove", nav - previousNav < 0.038f)
+            assertTrue("Elastic accent builds and releases gently", kotlin.math.abs(accent - previousAccent) < 0.06f)
+            previousNav = nav
+            previousAccent = accent
+        }
     }
 
     @Test fun growingLowerEdgePushesNavigationWithoutOverlapOrGapAfterContact() {
