@@ -98,6 +98,15 @@ class YouTubeMusicVideoMatcherTest {
         assertEquals("lmnopqrstuv", nextOfficialVideoForSong(response, "abcdefghijk"))
         assertEquals("badclip0001", nextOfficialVideoForSong(response, "otherclip01"))
         assertNull(nextOfficialVideoForSong(response, "missing12345"))
+        var now = 100L
+        val cache = FirstPartyVideoCounterpartCache { now }
+        cache.remember("abcdefghijk", response)
+        assertEquals("lmnopqrstuv", cache.get("abcdefghijk"))
+        assertNull(cache.get("otherclip01"))
+        cache.remember("missing12345", response)
+        assertNull(cache.get("missing12345"))
+        now += 30 * 60_000L
+        assertNull(cache.get("abcdefghijk"))
     }
 
     @Test fun sameSongWordsInsideAnotherTitleAreNeverEnoughToPickAnOfficialClip() {

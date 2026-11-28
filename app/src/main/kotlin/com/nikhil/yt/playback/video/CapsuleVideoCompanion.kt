@@ -134,6 +134,7 @@ internal fun capsuleVideoInitialPosition(
     item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
     measuredReadyMs: Long? = null,
     canonicalDurationMs: Long? = null,
+    likelyCachedWindow: Boolean = false,
 ): Long? {
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
     val duration = when (resolved.delivery) {
@@ -159,7 +160,7 @@ internal fun capsuleVideoInitialPosition(
     // Latest cold CDN index opens take 2.7–3.4s. Predict READY rather
     // than frame-zero decode, but prefer measured delivery-specific history.
     // Pause, unknown duration and near-EOF paths remain unchanged.
-    val prediction = if (!audioPlaying) 0L else (
+    val prediction = if (!audioPlaying) 0L else if (likelyCachedWindow) 350L else (
         measuredReadyMs?.takeIf { it in 700L..6_000L } ?: when (resolved.delivery) {
             CapsuleVideoDelivery.SABR -> 4_500L
             CapsuleVideoDelivery.DASH -> 3_200L
@@ -359,6 +360,20 @@ internal class CapsuleVideoSession(
     private var startedAtMs = 0L
     private var readyReported = false
     private var reusedThisSession = false
+    private var likelyCachedStartup = false
+    // A hint, not a cache hit guarantee: the cache can evict bytes at any
+    // time. Keep only the most recently proven DASH window, not signed URLs.
+    private data class BufferedDashWindow(
+        val clipId: String, val videoItag: Int, val audioItag: Int?,
+        val fromMs: Long, val untilMs: Long, val observedAtMs: Long,
+    ) {
+        fun covers(stream: YouTubeVideoResolver.ResolvedVideo, positionMs: Long, nowMs: Long): Boolean =
+            stream.delivery == CapsuleVideoDelivery.DASH && clipId == stream.videoId &&
+                videoItag == stream.videoFormat.itag && audioItag == stream.audioFormat?.itag &&
+                nowMs - observedAtMs in 0L..2_700_000L && positionMs >= fromMs &&
+                positionMs <= untilMs - 2_000L
+    }
+    private var lastBufferedDashWindow: BufferedDashWindow? = null
     private val readinessEstimator = CapsuleVideoReadinessEstimator()
     // The source factory replaces the synthetic URI with the CDN URI in the
     // published timeline. Compare original requests, not the rewritten item.
@@ -436,7 +451,7 @@ internal class CapsuleVideoSession(
                 readyReported = true
                 val preparedMs = (clockMs() - startedAtMs).coerceAtLeast(0L)
                 startupReadyMs = if (reusedThisSession) 0L else preparedMs
-                if (!reusedThisSession) {
+                if (!reusedThisSession && !likelyCachedStartup) {
                     val delivery = (preparedItem?.localConfiguration?.tag as?
                         YouTubeVideoResolver.ResolvedVideo)?.delivery
                     delivery?.let { readinessEstimator.observe(it, preparedMs) }
@@ -731,6 +746,9 @@ internal class CapsuleVideoSession(
             canReusePreparedVideo(preparedItem, item, video.playbackState)
         stop(keepPrepared = reuse)
         reusedThisSession = reuse
+        val requestedStream = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo
+        likelyCachedStartup = !reuse && requestedStream != null &&
+            lastBufferedDashWindow?.covers(requestedStream, audio.currentPosition, clockMs()) == true
         firstFrame = reuse && rendering && preparedFrameAvailable
         this.startupBudgetMs = startupBudgetMs
         id = mediaId
@@ -764,12 +782,13 @@ internal class CapsuleVideoSession(
                 val initialPosition = capsuleVideoInitialPosition(
                     item, audio.currentPosition, audio.isPlaying, learnedLatency,
                     canonicalDurationMs = capsuleKnownDuration(audio.duration),
+                    likelyCachedWindow = likelyCachedStartup,
                 )
                 if (initialPosition != null) {
                     video.setMediaItem(item, initialPosition)
                     Timber.tag("CapsuleVideo").i(
-                        "VIDEO start-near-audio session=%s positionMs=%s musicMs=%s",
-                        mediaId, initialPosition, audio.currentPosition,
+                        "VIDEO start-near-audio session=%s positionMs=%s musicMs=%s cachedHint=%s",
+                        mediaId, initialPosition, audio.currentPosition, likelyCachedStartup,
                     )
                 } else {
                     video.setMediaItem(item)
@@ -990,6 +1009,15 @@ internal class CapsuleVideoSession(
         watchdog?.cancel(); watchdog = null
         val wasActive = id != null
         val returnPosition = video.currentPosition
+        val stream = preparedItem?.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo
+        if (wasActive && committed && video.playbackState == Player.STATE_READY &&
+            stream?.delivery == CapsuleVideoDelivery.DASH &&
+            returnPosition >= 0L && video.bufferedPosition - returnPosition >= 2_000L) {
+            lastBufferedDashWindow = BufferedDashWindow(
+                stream.videoId, stream.videoFormat.itag, stream.audioFormat?.itag,
+                returnPosition, video.bufferedPosition, clockMs(),
+            )
+        }
         // A failed/stalled clip has no authority to rewind healthy MUSIC.
         val syncMusic = synchronizeMusic && committed && ownsSound && audio.currentMediaItem?.mediaId == id
         id = null

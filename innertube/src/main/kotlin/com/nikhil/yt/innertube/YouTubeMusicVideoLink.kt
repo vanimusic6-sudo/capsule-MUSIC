@@ -105,6 +105,26 @@ internal suspend fun capsuleNativeVideoBeforeArtistFallback(
     artistFallback: suspend () -> YouTubeMusicVideoLink?,
 ): YouTubeMusicVideoLink? = native ?: artistFallback()
 
+/** Reuse only explicit typed counterparts already returned by a normal queue
+ * request. No new request, no speculative extraction and no cached refusal. */
+internal class FirstPartyVideoCounterpartCache(private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L }) {
+    private data class Entry(val clip: String, val expiresAt: Long)
+    private val entries = LinkedHashMap<String, Entry>(64, 0.75f, true)
+
+    @Synchronized fun remember(sourceId: String, response: NextResponse) {
+        if (!sourceId.matches(Regex("[A-Za-z0-9_-]{11}"))) return
+        val clip = nextOfficialVideoForSong(response, sourceId) ?: return
+        entries[sourceId] = Entry(clip, nowMs() + 30 * 60_000L)
+        while (entries.size > 128) entries.remove(entries.keys.first())
+    }
+
+    @Synchronized fun get(sourceId: String): String? {
+        val entry = entries[sourceId] ?: return null
+        if (entry.expiresAt <= nowMs()) { entries.remove(sourceId); return null }
+        return entry.clip
+    }
+}
+
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 2 * 60 * 60 * 1000L
@@ -147,6 +167,10 @@ object YouTubeMusicVideoLinkResolver {
     private val anonymousLocks = Array(32) { Mutex() }
     private val innerTube = InnerTube()
     private val matchCache = ConcurrentHashMap<String, CacheEntry>()
+    private val queueCounterparts = FirstPartyVideoCounterpartCache()
+
+    internal fun rememberQueueCounterpart(sourceId: String, response: NextResponse) =
+        queueCounterparts.remember(sourceId, response)
 
     @Volatile
     var onCacheEntry: ((CacheRow) -> Unit)? = null
@@ -173,6 +197,11 @@ object YouTubeMusicVideoLinkResolver {
             require(sourceId.isNotBlank()) { "Missing YouTube Music track id" }
             require(sourceTitle.isNotBlank()) { "Missing song title" }
 
+            fun queueCounterpart(): YouTubeMusicVideoLink? = queueCounterparts.get(sourceId)?.let { clip ->
+                YouTubeMusicVideoLink(clip, MUSIC_VIDEO_TYPE_OMV, sourceTitle,
+                    YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE + 100)
+            }
+            queueCounterpart()?.let { return@runCatching it }
             cachedOrNull(sourceId, metadataKey)?.let { return@runCatching it }
             // A cached miss means the native search already failed. If the
             // artist screen has since loaded a valid clip, use that local
@@ -221,6 +250,7 @@ object YouTubeMusicVideoLinkResolver {
                 anonymousLocks[(sourceId.hashCode() and Int.MAX_VALUE) % anonymousLocks.size]
             else authMutex
             requestLock.withLock {
+                queueCounterpart()?.let { return@withLock it }
                 cachedOrNull(sourceId, metadataKey)?.let { return@withLock it }
                 if (isNegativeCached(sourceId, metadataKey)) {
                     artistAfterNativeMiss()?.let { return@withLock it }

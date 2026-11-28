@@ -1198,6 +1198,9 @@ object YouTube {
             endpoint.index,
             endpoint.params,
             continuation).body<NextResponse>()
+        if (continuation == null) endpoint.videoId?.let { sourceId ->
+            YouTubeMusicVideoLinkResolver.rememberQueueCounterpart(sourceId, response)
+        }
         val playlistPanelRenderer = response.continuationContents?.playlistPanelContinuation
             ?: response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
                 ?.watchNextTabbedResultsRenderer?.tabs?.get(0)?.tabRenderer?.content?.musicQueueRenderer

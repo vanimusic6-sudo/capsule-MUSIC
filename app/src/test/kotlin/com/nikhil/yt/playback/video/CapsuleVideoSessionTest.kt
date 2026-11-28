@@ -205,6 +205,32 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+    @Test fun reopeningRecentlyBufferedDashDoesNotUseColdNetworkPrediction() = runTest {
+        val f = Fixture(this)
+        f.music.position = 12_000L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        f.music.position = 15_250L
+        f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        f.clip.buffered = 30_000L
+        f.session.stop()
+        f.music.position = 16_000L
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        assertEquals(16_350L, f.clip.position)
+        f.music.position = 16_400L
+        f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertTrue(f.clip.seeks.isEmpty())
+        assertEquals(2, f.frames.size)
+        f.session.stop()
+        // A position outside the previously buffered window is still cold.
+        f.music.position = 80_000L
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        assertEquals(83_200L, f.clip.position)
+        f.session.stop()
+    }
+
     @Test fun indexedDashPreseekFallsBackNearClipEndOrWithoutDuration() {
         val item = indexedVideoItem(seconds = 60)
         assertEquals(13_200L, capsuleVideoInitialPosition(item, 10_000L, true))
