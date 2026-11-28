@@ -1365,6 +1365,23 @@ class MusicService :
             var lastFailure = failure
             while (videoRecoveryAttempts < 2 && !CapsuleVideoRequestGuard.isBlocked()) {
                 val attempt = ++videoRecoveryAttempts
+                val transientTransport = com.nikhil.yt.playback.video.canRestartVideoTransport(lastFailure)
+                // Keep validated DASH/HLS/progressive URLs and cached segments
+                // when the error is only a timeout/reset, not an access verdict.
+                // One restart, no extra extractor call; persistent outages fall
+                // back to MUSIC instead of rotating through unrelated parsers.
+                if (transientTransport && stream.delivery != com.nikhil.yt.innertube.video.CapsuleVideoDelivery.SABR &&
+                    com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(stream.expiresAtMs)) {
+                    if (attempt == 1 && lease == videoSessionGeneration &&
+                        player.currentMediaItem?.mediaId == mediaId &&
+                        videoPlaybackState.value.preferredMode == CapsulePlaybackMode.VIDEO) {
+                        Timber.tag("CapsuleVideo").i("VIDEO recover same transport clip=%s attempt=%d", stream.videoId, attempt)
+                        videoRecoveryJob = null
+                        startVideoSession(mediaId, stream)
+                        return@launch
+                    }
+                    break
+                }
                 // Always try the dedicated parsers before renewing a WEB reserve.
                 val refreshWebFirst = false
                 Timber.tag("CapsuleVideo").i(

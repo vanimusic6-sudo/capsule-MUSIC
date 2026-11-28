@@ -54,6 +54,17 @@ internal fun isTerminalVideoLoadFailure(error: Throwable): Boolean =
             it is com.nikhil.yt.innertube.CapsuleVideoRequestGuard.RequestBlockedException
     }
 
+/** A valid direct/segmented stream need not be extracted again after a
+ * transient I/O failure. Never retry access refusals, expired links or local
+ * parsing/decoder errors under the guise of a transport restart. */
+internal fun canRestartVideoTransport(error: Throwable): Boolean {
+    if (isTerminalVideoLoadFailure(error) || error.isExpectedAudioCdnInterruption()) return false
+    return generateSequence(error as Throwable?) { it.cause }.take(12).any {
+        it is java.net.SocketTimeoutException || it is java.net.SocketException ||
+            it is java.io.EOFException || it is java.net.UnknownHostException
+    }
+}
+
 internal class CapsuleVideoLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(1) {
     override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
         if (isTerminalVideoLoadFailure(info.exception)) C.TIME_UNSET else super.getRetryDelayMsFor(info)

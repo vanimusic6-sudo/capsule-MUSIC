@@ -5,6 +5,14 @@ import org.junit.Test
 import java.io.IOException
 
 class VideoRejectedLinkMemoryTest {
+    @org.junit.Test fun restartIsRestrictedToTransportFailures() {
+        org.junit.Assert.assertTrue(canRestartVideoTransport(java.net.SocketTimeoutException("read timed out")))
+        org.junit.Assert.assertTrue(canRestartVideoTransport(java.io.IOException("wrapper", java.net.SocketException("Connection reset"))))
+        org.junit.Assert.assertFalse(canRestartVideoTransport(VideoRetiredLinkException()))
+        org.junit.Assert.assertFalse(canRestartVideoTransport(java.io.IOException("bad media format")))
+        org.junit.Assert.assertFalse(canRestartVideoTransport(java.io.InterruptedIOException("Canceled")))
+    }
+
     @Test fun rejectsOnlyTheExactLinkForABoundedInterval() {
         var now = 0L
         val memory = VideoRejectedLinkMemory { now }

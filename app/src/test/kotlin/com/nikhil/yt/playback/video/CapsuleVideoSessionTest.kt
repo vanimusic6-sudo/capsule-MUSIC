@@ -24,6 +24,39 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+    @Test fun independentDashLoadsExtendStartupIdleButNotTheHardDeadline() = runTest {
+        val f = Fixture(this)
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        advanceTimeBy(11_000L); runCurrent()
+        f.session.noteStartupLoadCompleted(739L, 0L)
+        advanceTimeBy(4_000L); runCurrent()
+        assertTrue("A completed audio index is progress even if video is still buffering", f.failures.isEmpty())
+        assertEquals(1f, f.music.volume)
+        advanceTimeBy(10_000L); runCurrent()
+        f.session.noteStartupLoadCompleted(1119L, 0L)
+        advanceTimeBy(5_501L); runCurrent()
+        assertEquals("Independent progress cannot extend the 30s hard deadline", 1, f.failures.size)
+        f.session.stop()
+    }
+
+    @Test fun dashStartupWaitsForForwardSeekRunway() = runTest {
+        val f = Fixture(this)
+        f.music.position = 12_000L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        f.music.position = 16_100L
+        f.clip.buffered = 16_200L
+        f.clip.ready(); f.clip.frame()
+        assertTrue("Do not flush the first frame into an unbuffered seek", f.clip.seeks.isEmpty())
+        assertEquals(1f, f.music.volume)
+        f.clip.buffered = 19_000L; f.clip.event()
+        assertEquals(listOf(16_100L), f.clip.seeks)
+        f.clip.frame(); advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        f.session.stop()
+    }
+
     private class Decoder {
         var item: MediaItem? = MediaItem.Builder().setMediaId("song").build()
         var position = 1_000L

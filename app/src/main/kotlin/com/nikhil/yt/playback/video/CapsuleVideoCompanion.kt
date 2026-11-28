@@ -219,8 +219,18 @@ internal class CapsuleVideoCompanion(
     init {
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, info: LoadEventInfo, data: MediaLoadData) {
-                if (session.awaitingPresentation) Timber.tag("CapsuleVideo").i(
-                    "VIDEO startup load type=%s host=%s bytes=%s ms=%s", data.dataType, info.uri.host, info.bytesLoaded, info.loadDurationMs)
+                if (session.awaitingPresentation) {
+                    session.noteStartupLoadCompleted(info.bytesLoaded, info.elapsedRealtimeMs - info.loadDurationMs)
+                    Timber.tag("CapsuleVideo").i(
+                        "VIDEO startup load type=%s host=%s bytes=%s ms=%s", data.dataType, info.uri.host, info.bytesLoaded, info.loadDurationMs)
+                }
+            }
+            override fun onLoadError(eventTime: AnalyticsListener.EventTime, info: LoadEventInfo, data: MediaLoadData,
+                error: java.io.IOException, wasCanceled: Boolean) {
+                if (session.awaitingPresentation && !wasCanceled) Timber.tag("CapsuleVideo").w(
+                    "VIDEO startup load error type=%s bytes=%s ms=%s failure=%s cause=%s", data.dataType,
+                    info.bytesLoaded, info.loadDurationMs, error.javaClass.simpleName,
+                    generateSequence(error as Throwable?) { it.cause }.take(12).lastOrNull()?.javaClass?.simpleName ?: "none")
             }
             override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String,
                 initializedTimestampMs: Long, initializationDurationMs: Long) {
@@ -320,6 +330,13 @@ internal class CapsuleVideoSession(
     private var preparedFrameAvailable = false
     private var firstFrame = false
     private var renderedFrameRevision = 0L
+    private var startupLoadRevision = 0L
+    // DASH's aggregate bufferedPosition is the minimum of both tracks. A
+    // completed index or segment on either track is genuine startup progress.
+    // Ignore a late completion from an earlier preparation of this player.
+    fun noteStartupLoadCompleted(bytes: Long, loadStartedAtMs: Long) {
+        if (id != null && !committed && bytes > 0L && loadStartedAtMs >= startedAtMs) startupLoadRevision++
+    }
     private var surfaceRecoveryRequested = false
     private var frameReported = false
     private var ownsSound = false
@@ -409,7 +426,7 @@ internal class CapsuleVideoSession(
             firstFrame = true
             preparedFrameAvailable = true
             Timber.tag("CapsuleVideo").i("first-frame session=%s generation=%s prepareMs=%s", id, generation,
-                SystemClock.elapsedRealtime() - startedAtMs)
+                (clockMs() - startedAtMs).coerceAtLeast(0L))
             evaluate()
         }
         override fun onEvents(player: Player, events: Player.Events) = evaluate()
@@ -572,8 +589,19 @@ internal class CapsuleVideoSession(
         // Music has advanced during extraction/buffering. Align at readiness,
         // before silencing MUSIC, then wait for the post-seek decoded frame.
         if (!ownsSound && !aligned && rendering && ready) {
-            aligned = true
             val target = targetPosition()
+            val delivery = (preparedItem?.localConfiguration?.tag as?
+                YouTubeVideoResolver.ResolvedVideo)?.delivery
+            // A forward correction on an indexed clip can discard the only
+            // decoded frames immediately after READY. Wait for its runway
+            // instead of forcing a second network load while MUSIC plays.
+            if (delivery == CapsuleVideoDelivery.DASH && audio.isPlaying &&
+                target - video.currentPosition > 400L &&
+                video.bufferedPosition < capsuleClampDecoderSeek(target + 2_000L, video.duration)) {
+                ensureWatchdog()
+                return
+            }
+            aligned = true
             if (abs(video.currentPosition - target) > 400L) {
                 val predictedTarget = startupSeekTarget()
                 Timber.tag("CapsuleVideo").i(
@@ -708,7 +736,7 @@ internal class CapsuleVideoSession(
         id = mediaId
         surfaceEverAttachedForSession = surfaceAttached
         surfaceRecoveryRequested = false
-        startedAtMs = SystemClock.elapsedRealtime()
+        startedAtMs = clockMs()
         startupReadyMs = 0L
         readyReported = false
         val lease = generation
@@ -790,6 +818,7 @@ internal class CapsuleVideoSession(
             var previousBufferedMs = video.bufferedPosition
             var previousPositionMs = video.currentPosition
             var previousFrameRevision = renderedFrameRevision
+            var previousStartupLoadRevision = startupLoadRevision
             while (id == currentId && generation == lease) {
                 val healthySample = committed && video.playbackState == Player.STATE_READY && video.isPlaying
                 val tickMs = if (healthySample) 2_000L else 500L
@@ -803,7 +832,8 @@ internal class CapsuleVideoSession(
                 val positionDelta = position - previousPositionMs
                 val buffered = video.bufferedPosition
                 val progressed = buffered > previousBufferedMs ||
-                    position != previousPositionMs || renderedFrameRevision != previousFrameRevision
+                    position != previousPositionMs || renderedFrameRevision != previousFrameRevision ||
+                    (!committed && startupLoadRevision != previousStartupLoadRevision)
                 if (healthySample && clockActive) {
                     frozenClockMs = if (positionDelta == 0L) frozenClockMs + tickMs else 0L
                     healthyClockMs = if (positionDelta in 1L..(tickMs * 4L)) healthyClockMs + tickMs else 0L
@@ -818,6 +848,7 @@ internal class CapsuleVideoSession(
                 previousBufferedMs = buffered
                 previousPositionMs = position
                 previousFrameRevision = renderedFrameRevision
+                previousStartupLoadRevision = startupLoadRevision
                 // No first-frame timeout with a detached/minimized player.
                 // On the first cold launch the TextureView may never attach.
                 // Do not interpret an absent local Surface as a slow YouTube
@@ -848,7 +879,10 @@ internal class CapsuleVideoSession(
                 }
                 val buffering = (rendering || committed) && audio.playWhenReady &&
                     video.playbackState == Player.STATE_BUFFERING
-                stallMs = if (buffering && !progressed) stallMs + 500L else 0L
+                // Startup already has its own delivery-specific idle budget.
+                // The old 12s rebuffer timer also fired during preparation,
+                // before a slow HTTP open could return and Media3 retry it.
+                stallMs = if (committed && buffering && !progressed) stallMs + 500L else 0L
                 // Tiny increments of buffered position can keep the idle timer
                 // alive forever without ever reaching READY. Bound the whole
                 // continuous rebuffer episode separately from the idle timer.
