@@ -352,7 +352,7 @@ class HomeViewModel @Inject constructor(
             val playlists = YouTube.search(
                 query,
                 YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
-            ).getOrNull()?.items.orEmpty().filterIsInstance<PlaylistItem>()
+            ).getOrThrow().items.filterIsInstance<PlaylistItem>()
             results.addAll(playlists)
             if (results.distinctBy { it.id }.size >= 8) break
         }
@@ -363,7 +363,7 @@ class HomeViewModel @Inject constructor(
                 YouTube.search(
                     "music playlist",
                     YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
-                ).getOrNull()?.items.orEmpty().filterIsInstance<PlaylistItem>(),
+                ).getOrThrow().items.filterIsInstance<PlaylistItem>(),
             )
         }
         communityPlaylists.value = results
@@ -460,6 +460,14 @@ class HomeViewModel @Inject constructor(
                 (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                     .distinctBy { it.id }
 
+            // A failed primary feed is not permission to send a burst of
+            // optional discovery requests. Preserve local/cached shelves and
+            // let the existing explicit refresh action retry the feed.
+            if (homeFeedError.value) {
+                refreshAllYouTubeItems()
+                return
+            }
+
             // Fetch listener-made playlists separately from the Home continuation.
             // Failures are isolated and never block the music feed or playback.
             communityPlaylistsJob = viewModelScope.launch(Dispatchers.IO) {
@@ -518,7 +526,7 @@ class HomeViewModel @Inject constructor(
                                 firstArtistKey
                             }.filterExplicit(hideExplicit)
                     )
-                }.onFailure { reportException(it) }
+                }.getOrThrow()
                     // Use YouTube Music's dedicated release catalog; Explore is a fallback.
                     val direct = YouTube.newReleaseAlbums().getOrNull()
                         ?.filterExplicit(hideExplicit)

@@ -293,6 +293,7 @@ class MainActivity : ComponentActivity() {
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var isMusicServiceBound = false
+    private var videoActivityStarted = false
 
     // Keep the actual top-level tab across Activity recreation. Android may show the previous task
     // snapshot immediately, so restarting the live NavHost at HOME a moment later looks like the
@@ -317,7 +318,7 @@ class MainActivity : ComponentActivity() {
                     // A normal background -> foreground cycle binds to the same live service.
                     // Keeping the same PlayerConnection prevents the whole Compose player tree,
                     // theme collectors and mini-player state from being recreated on every return.
-                    service.service.setVideoAppForeground(true)
+                    service.service.setVideoAppForeground(videoActivityStarted)
                     playPendingDeepLinkSongIfReady()
                     joinPendingTogetherIfReady()
                 }
@@ -360,6 +361,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        videoActivityStarted = true
+        playerConnection?.service?.setVideoAppForeground(true)
         // ArchiveTune parity: bind for the UI; let Media3 publish the real
         // media foreground service only when playback is active.
         isMusicServiceBound =
@@ -369,6 +372,13 @@ class MainActivity : ComponentActivity() {
                 BIND_AUTO_CREATE
             )
         playPendingDeepLinkSongIfReady()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The service may already be bound after unlocking or returning to
+        // the activity. Do not rely on another ServiceConnection callback.
+        if (videoActivityStarted) playerConnection?.service?.setVideoAppForeground(true)
     }
 
     private fun safeUnbindMusicService() {
@@ -389,6 +399,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        videoActivityStarted = false
         // Notify VIDEO of UI invisibility before its SurfaceView detaches;
         // preserve the committed clip soundtrack and timeline in background.
         // Configuration changes (e.g. rotation) are not a background exit.

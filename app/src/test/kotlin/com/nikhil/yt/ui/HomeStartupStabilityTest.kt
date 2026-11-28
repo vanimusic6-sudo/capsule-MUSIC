@@ -41,6 +41,17 @@ class HomeStartupStabilityTest {
     }
 
     @Test
+    fun failedPrimaryFeedDoesNotStartOptionalDiscoveryBurst() {
+        val load = viewModelSource().substringAfter("private suspend fun load() {")
+            .substringBefore("private suspend fun songLoad()")
+        val guard = load.indexOf("if (homeFeedError.value) {")
+        assertTrue(guard >= 0)
+        assertTrue(load.substring(guard).substringBefore("communityPlaylistsJob =").contains("return"))
+        assertTrue(guard < load.indexOf("tasteRecommendationsJob = viewModelScope.launch"))
+        assertTrue(guard < load.indexOf("exploreJob = viewModelScope.launch"))
+    }
+
+    @Test
     fun incompleteKeepListeningPagesStayAtTheTopOfThePager() {
         val section = source("HomeScreenComponents.kt")
             .substringAfter("fun KeepListeningSection(")

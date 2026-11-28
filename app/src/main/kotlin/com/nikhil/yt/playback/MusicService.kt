@@ -1090,7 +1090,8 @@ class MusicService :
     private var videoAudioOwned = false
     private var videoReturnGapActive = false
     private var videoReturnGapJob: Job? = null
-    private var videoScreenVisible = true
+    private var videoActivityForeground = false
+    private var videoScreenVisible = false
     private var videoSurfaceOwner: Any? = null
     internal val videoSurfaceRevision = MutableStateFlow(0L)
     private var activeResolvedVideo: YouTubeVideoResolver.ResolvedVideo? = null
@@ -1424,8 +1425,24 @@ class MusicService :
     // Activity lifecycle. VIDEO stays selected while background audio
     // continues; no NewPipe re-extraction on return.
     fun setVideoAppForeground(foreground: Boolean) {
-        videoScreenVisible = foreground && screenInteractive
-        videoCompanion?.setForeground(videoScreenVisible)
+        videoActivityForeground = foreground
+        // Activity and physical display are independent facts. An Activity
+        // can resume before the screen-on broadcast is delivered.
+        if (foreground) {
+            screenInteractive = (getSystemService(Context.POWER_SERVICE) as? PowerManager)
+                ?.isInteractive ?: screenInteractive
+        }
+        updateVideoScreenVisibility()
+    }
+
+    private fun updateVideoScreenVisibility() {
+        val visible = videoActivityForeground && canUseCapsuleVideoForScreen()
+        if (videoScreenVisible != visible) {
+            Timber.tag("CapsuleVideo").i("VIDEO visibility activity=%s interactive=%s visible=%s",
+                videoActivityForeground, screenInteractive, visible)
+        }
+        videoScreenVisible = visible
+        videoCompanion?.setForeground(visible)
     }
 
     private var videoOriginalMediaItem: MediaItem? = null
@@ -6088,13 +6105,14 @@ class MusicService :
         // Unlike an ordinary surface detach, a REAL screen-off must park
         // VIDEO decoding and hand audio back to the canonical MUSIC stream.
         // Keep the selected VIDEO item for a fast seek-aligned resume.
-        setVideoAppForeground(false)
+        updateVideoScreenVisibility()
         videoCompanion?.parkForScreenOff()
     }
 
     private fun resumeCapsuleVideoAfterUnlockIfAllowed() {
-        // Actual Activity foreground is signalled by its ServiceConnection.
-        // Unlocking alone must not start a hidden VIDEO SurfaceView.
+        // Recompute from the last real Activity lifecycle signal. Unlocking
+        // cannot make an Activity which is actually stopped visible.
+        updateVideoScreenVisibility()
     }
 
     private fun isCurrentCapsuleVideoItem(): Boolean =
