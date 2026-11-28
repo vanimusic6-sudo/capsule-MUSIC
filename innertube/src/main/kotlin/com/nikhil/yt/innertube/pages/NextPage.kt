@@ -14,7 +14,7 @@ import com.nikhil.yt.innertube.models.BrowseEndpoint
 import com.nikhil.yt.innertube.models.PlaylistPanelVideoRenderer
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
-import com.nikhil.yt.innertube.models.oddElements
+import com.nikhil.yt.innertube.models.getContinuation
 import com.nikhil.yt.innertube.models.splitBySeparator
 import com.nikhil.yt.innertube.utils.parseTime
 
@@ -29,6 +29,40 @@ data class NextResult(
 )
 
 object NextPage {
+    private fun tabs(response: com.nikhil.yt.innertube.models.response.NextResponse) =
+        response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
+            ?.watchNextTabbedResultsRenderer?.tabs.orEmpty()
+
+    internal fun playlistPanel(response: com.nikhil.yt.innertube.models.response.NextResponse) =
+        response.continuationContents?.playlistPanelContinuation ?: tabs(response).firstNotNullOfOrNull {
+            it.tabRenderer.content?.musicQueueRenderer?.content?.playlistPanelRenderer
+        }
+
+    /** A standalone video can have no music queue, but still have related tabs.
+     * Preserve those endpoints and let the caller keep the selected item. */
+    internal fun fromResponse(
+        response: com.nikhil.yt.innertube.models.response.NextResponse,
+        endpoint: WatchEndpoint,
+    ): NextResult {
+        val tabs = tabs(response)
+        val queue = tabs.firstNotNullOfOrNull { it.tabRenderer.content?.musicQueueRenderer }
+        val panel = playlistPanel(response)
+        val entries = panel?.contents.orEmpty().mapNotNull { content ->
+            content.playlistPanelVideoRenderer?.let { renderer ->
+                fromPlaylistPanelVideoRenderer(renderer)?.let { it to renderer.selected }
+            }
+        }
+        return NextResult(
+            title = queue?.header?.musicQueueHeaderRenderer?.subtitle?.runs?.firstOrNull()?.text,
+            items = entries.map { it.first },
+            currentIndex = entries.indexOfFirst { it.second }.takeIf { it >= 0 },
+            lyricsEndpoint = tabs.getOrNull(1)?.tabRenderer?.endpoint?.browseEndpoint,
+            relatedEndpoint = tabs.getOrNull(2)?.tabRenderer?.endpoint?.browseEndpoint,
+            continuation = panel?.continuations?.let { it.getContinuation() },
+            endpoint = endpoint,
+        )
+    }
+
     fun fromPlaylistPanelVideoRenderer(renderer: PlaylistPanelVideoRenderer): SongItem? {
         val longByLineRuns = renderer.longBylineText?.runs?.splitBySeparator() ?: return null
         return SongItem(
@@ -48,7 +82,7 @@ object NextPage {
                     }?.let {
                         Album(
                             name = it.text,
-                            id = it.navigationEndpoint?.browseEndpoint?.browseId!!,
+                            id = it.navigationEndpoint?.browseEndpoint?.browseId ?: return@let null,
                         )
                     },
             duration =

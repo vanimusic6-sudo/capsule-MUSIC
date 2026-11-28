@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /**
  * Owns Automix request policy and stale-work cancellation.
@@ -218,7 +219,8 @@ internal class AutomixCoordinator(
                 } catch (failure: Exception) {
                     if (runtime.seedMediaId == seed) {
                         runtime.loading.value = false
-                        runtime.error.value = failure.localizedMessage ?: failureMessage()
+                        Timber.tag("Automix").w("Recommendation request failed type=%s", failure.javaClass.simpleName)
+                        runtime.error.value = failureMessage()
                     }
                 }
             }
@@ -325,7 +327,8 @@ internal class AutomixCoordinator(
                 } catch (failure: Exception) {
                     if (runtime.seedMediaId == seed) {
                         runtime.loading.value = false
-                        runtime.error.value = failure.localizedMessage ?: failureMessage()
+                        Timber.tag("Automix").w("Recommendation request failed type=%s", failure.javaClass.simpleName)
+                        runtime.error.value = failureMessage()
                     }
                 }
             }
@@ -411,7 +414,8 @@ internal class AutomixCoordinator(
                     throw cancelled
                 } catch (failure: Exception) {
                     runtime.loading.value = false
-                    runtime.error.value = failure.localizedMessage ?: failureMessage()
+                    Timber.tag("Automix").w("Recommendation request failed type=%s", failure.javaClass.simpleName)
+                        runtime.error.value = failureMessage()
                 }
             }
     }

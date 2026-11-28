@@ -1189,7 +1189,14 @@ object YouTube {
     }
 
 
-    suspend fun next(endpoint: WatchEndpoint, continuation: String? = null): Result<NextResult> = runCatchingCancellable {
+    suspend fun next(endpoint: WatchEndpoint, continuation: String? = null): Result<NextResult> =
+        nextInternal(endpoint, continuation, allowAutomixExpansion = true)
+
+    private suspend fun nextInternal(
+        endpoint: WatchEndpoint,
+        continuation: String?,
+        allowAutomixExpansion: Boolean,
+    ): Result<NextResult> = runCatchingCancellable {
         val response = innerTube.next(
             WEB_REMIX,
             endpoint.videoId,
@@ -1201,43 +1208,29 @@ object YouTube {
         if (continuation == null) endpoint.videoId?.let { sourceId ->
             YouTubeMusicVideoLinkResolver.rememberQueueCounterpart(sourceId, response)
         }
-        val playlistPanelRenderer = response.continuationContents?.playlistPanelContinuation
-            ?: response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
-                ?.watchNextTabbedResultsRenderer?.tabs?.get(0)?.tabRenderer?.content?.musicQueueRenderer
-                ?.content?.playlistPanelRenderer!!
-        val title = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
-            ?.watchNextTabbedResultsRenderer?.tabs?.get(0)?.tabRenderer?.content?.musicQueueRenderer
-            ?.header?.musicQueueHeaderRenderer?.subtitle?.runs?.firstOrNull()?.text
-        val items = playlistPanelRenderer.contents.mapNotNull { content ->
-            content.playlistPanelVideoRenderer
-                ?.let(NextPage::fromPlaylistPanelVideoRenderer)
-                ?.let { it to content.playlistPanelVideoRenderer.selected }
-        }
-        val songs = items.map { it.first }
-        val currentIndex = items.indexOfFirst { it.second }.takeIf { it != -1 }
-
-        // load automix items
-        playlistPanelRenderer.contents.lastOrNull()?.automixPreviewVideoRenderer?.content?.automixPlaylistVideoRenderer?.navigationEndpoint?.watchPlaylistEndpoint?.let { watchPlaylistEndpoint ->
-            return@runCatchingCancellable next(watchPlaylistEndpoint).getOrThrow().let { result ->
-                result.copy(
-                    title = title,
-                    items = songs + result.items,
-                    lyricsEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(1)?.tabRenderer?.endpoint?.browseEndpoint,
-                    relatedEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(2)?.tabRenderer?.endpoint?.browseEndpoint,
-                    currentIndex = currentIndex,
-                    endpoint = watchPlaylistEndpoint
+        val result = NextPage.fromResponse(response, endpoint)
+        val preview = NextPage.playlistPanel(response)?.contents?.lastOrNull()
+            ?.automixPreviewVideoRenderer?.content?.automixPlaylistVideoRenderer
+            ?.navigationEndpoint?.watchPlaylistEndpoint
+        // A preview is optional, not an unbounded chain of watch-next calls.
+        // Keep the original queue when the preview is missing or unavailable.
+        if (allowAutomixExpansion && preview != null && preview != endpoint) {
+            val expanded = nextInternal(preview, null, allowAutomixExpansion = false).getOrNull()
+            if (expanded != null && expanded.items.isNotEmpty()) {
+                return@runCatchingCancellable result.copy(
+                    items = (result.items + expanded.items).distinctBy { it.id },
+                    continuation = expanded.continuation,
+                    endpoint = preview,
+                    currentIndex = result.currentIndex?.let { index ->
+                        result.items.getOrNull(index)?.id?.let { id ->
+                            (result.items + expanded.items).distinctBy { it.id }.indexOfFirst { it.id == id }
+                                .takeIf { it >= 0 }
+                        }
+                    },
                 )
             }
         }
-        NextResult(
-            title = title,
-            items = songs,
-            currentIndex = currentIndex,
-            lyricsEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(1)?.tabRenderer?.endpoint?.browseEndpoint,
-            relatedEndpoint = response.contents.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer?.watchNextTabbedResultsRenderer?.tabs?.getOrNull(2)?.tabRenderer?.endpoint?.browseEndpoint,
-            continuation = playlistPanelRenderer.continuations?.getContinuation(),
-            endpoint = endpoint
-        )
+        result
     }
 
     /**
