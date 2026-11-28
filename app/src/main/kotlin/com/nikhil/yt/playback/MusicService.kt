@@ -1116,6 +1116,13 @@ class MusicService :
     private var videoSurfaceOwner: Any? = null
     internal val videoSurfaceRevision = MutableStateFlow(0L)
     private var activeResolvedVideo: YouTubeVideoResolver.ResolvedVideo? = null
+    private data class VideoTransportContext(val networkHandle: Long?, val proxy: java.net.Proxy?) {
+        override fun toString(): String = "VideoTransportContext(redacted)"
+    }
+    private fun videoTransportContext() = VideoTransportContext(
+        connectivityManager.activeNetwork?.networkHandle, YouTube.streamProxy,
+    )
+    private var activeVideoTransportContext: VideoTransportContext? = null
     private var videoRecoveryJob: Job? = null
     private var videoRecoveryAttempts = 0
     private var videoSessionGeneration = 0L
@@ -1371,6 +1378,7 @@ class MusicService :
                 // One restart, no extra extractor call; persistent outages fall
                 // back to MUSIC instead of rotating through unrelated parsers.
                 if (transientTransport && stream.delivery != com.nikhil.yt.innertube.video.CapsuleVideoDelivery.SABR &&
+                    activeVideoTransportContext == videoTransportContext() &&
                     com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(stream.expiresAtMs)) {
                     if (attempt == 1 && lease == videoSessionGeneration &&
                         player.currentMediaItem?.mediaId == mediaId &&
@@ -1415,6 +1423,7 @@ class MusicService :
     private fun startVideoSession(mediaId: String, video: YouTubeVideoResolver.ResolvedVideo) {
         val companion = companionForVideo()
         activeResolvedVideo = video
+        activeVideoTransportContext = videoTransportContext()
         val item = MediaItem.Builder().setMediaId(mediaId)
             .setUri("$CAPSULE_VIDEO_SCHEME://play/${video.videoId}")
             // Pin this session's exact formats; another quality/cache lookup
@@ -5368,8 +5377,18 @@ class MusicService :
     }
 
     private val videoTransportClient: OkHttpClient by lazy {
+        val defaultProxySelector = java.net.ProxySelector.getDefault()
         OkHttpClient.Builder()
-            .proxy(YouTube.streamProxy)
+            .proxySelector(object : java.net.ProxySelector() {
+                override fun select(uri: java.net.URI): List<java.net.Proxy> {
+                    YouTube.streamProxy?.let { return listOf(it) }
+                    return defaultProxySelector?.select(uri)?.takeIf { it.isNotEmpty() }
+                        ?: listOf(java.net.Proxy.NO_PROXY)
+                }
+                override fun connectFailed(uri: java.net.URI, sa: java.net.SocketAddress, ioe: java.io.IOException) {
+                    defaultProxySelector?.connectFailed(uri, sa, ioe)
+                }
+            })
             .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
             .dispatcher(okhttp3.Dispatcher().apply {
                 maxRequests = 4
