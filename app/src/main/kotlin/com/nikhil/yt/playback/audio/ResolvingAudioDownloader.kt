@@ -66,9 +66,13 @@ internal class ResolvingAudioDownloader(
                                 if (!AudioCacheIdentity.isComplete(cache, mediaId)) awaitAdmission()
                             },
                         ) {
-                            downloadWithSlot({ length, bytes, percent ->
-                                progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
-                            }, startArtwork)
+                            // Playback can finish caching the track while this job waits
+                            // for admission or a slot. Recheck before spending a /player call.
+                            if (!downloadFromPlaybackCache(progressListener, startArtwork)) {
+                                downloadWithSlot({ length, bytes, percent ->
+                                    progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
+                                }, startArtwork)
+                            }
                         }
                         // Audio's shared network slot is free. Still await artwork
                         // before marking the Media3 download complete.

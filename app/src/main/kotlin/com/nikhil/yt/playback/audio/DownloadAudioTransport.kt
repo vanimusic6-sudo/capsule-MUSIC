@@ -27,12 +27,15 @@ internal fun createDownloadAudioTransport(
     advertisedChunkBytes: Long,
     currentNetworkIdentity: () -> Long?,
     shouldYieldToPlayback: () -> Boolean = DownloadPlaybackCoexistence.priority::shouldYield,
+    retireIdleConnections: (() -> Unit)? = null,
 ): DataSource =
     DownloadYieldingDataSource(
         upstream = AudioChunkedDataSource(
             upstream = AudioCdnHostHealthDataSource(upstream, health),
             chunkBytes = downloadAudioChunkSizeBytes(advertisedChunkBytes),
             currentNetworkIdentity = currentNetworkIdentity,
+            retryTransientOpen = true,
+            retireIdleConnections = retireIdleConnections,
         ),
         shouldYield = shouldYieldToPlayback,
     )
