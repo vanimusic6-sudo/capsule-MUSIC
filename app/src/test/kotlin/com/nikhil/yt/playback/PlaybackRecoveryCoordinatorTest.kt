@@ -48,6 +48,28 @@ class PlaybackRecoveryCoordinatorTest {
      * MusicService compares against SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER.
      */
     @Test
+    fun explicitReselectionRearmsOnlyTheLocalCdnBudget() {
+        val coordinator = coordinator()
+        assertEquals(AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT,
+            coordinator.onCdnFailure("track", signedUrlRejected = false, unresponsiveOpen = true))
+        assertEquals(1_500L, coordinator.nextRetryDelayMs("track"))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK,
+            coordinator.onCdnFailure("track", signedUrlRejected = false, unresponsiveOpen = true))
+        coordinator.recordSignedUrlRejection("track")
+        coordinator.recordTerminalFailure("track", true)
+        assertFalse(coordinator.onExplicitTrackSelection("unrelated"))
+        assertTrue(coordinator.onExplicitTrackSelection("track"))
+        assertFalse(coordinator.onExplicitTrackSelection("track"))
+        assertEquals(1_500L, coordinator.nextRetryDelayMs("track"))
+        assertEquals(AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT,
+            coordinator.onCdnFailure("track", signedUrlRejected = false, unresponsiveOpen = true))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK,
+            coordinator.onCdnFailure("track", signedUrlRejected = false, unresponsiveOpen = true))
+        assertEquals(2, coordinator.recordSignedUrlRejection("track"))
+        assertFalse(coordinator.recordTerminalFailure("track", true).mayAutoSkip)
+    }
+
+    @Test
     fun signedUrlRejectionsAreCountedPerSong() {
         val coordinator = coordinator()
 

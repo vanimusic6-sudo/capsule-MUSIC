@@ -88,6 +88,15 @@ internal class PlaybackRecoveryCoordinator(
     fun hasUsedCdnRecovery(mediaId: String): Boolean =
         cdnRecoveryPlan.recoveryUsed(mediaId)
 
+    /** A user returning to a different queue item may start a new bounded
+     * CDN attempt. Keep access/refusal history and the queue failure guard. */
+    fun onExplicitTrackSelection(mediaId: String): Boolean {
+        if (!cdnRecoveryPlan.recoveryUsed(mediaId)) return false
+        cdnRecoveryPlan.reset(mediaId)
+        retryBudget.reset(mediaId)
+        return true
+    }
+
     fun resetRetry(mediaId: String) {
         retryBudget.reset(mediaId)
         cdnRecoveryPlan.reset(mediaId)

@@ -1567,6 +1567,8 @@ class MusicService :
     // The explicit "Try again" button authorizes THIS selected queue item only.
     // It must not re-arm automatic traversal if this manual attempt fails.
     private var manuallyRetriedSelection: Pair<String, Int>? = null
+    private var lastRecoverySelectionId: String? = null
+    private var pendingErrorSkipIndex: Int? = null
     /** Prevent an obsolete Media3 cancellation from re-preparing the same selection in a loop. */
     private var cancelledLoadRecoveredId: String? = null
     private var cancelledLoadRecoveredGeneration: Long = -1L
@@ -2368,6 +2370,10 @@ class MusicService :
                 // Which edges answer, and whether this route is served at all, are properties of
                 // the route rather than of the app.
                 audioCdnHostHealth.forget()
+                // Idle connections from the previous default network are not
+                // valid candidates for the next signed-stream request.
+                // evictAll does not interrupt an active response.
+                audioCdnConnectionPool.evictAll()
                 authWallDetector.forget()
                 audioCdnConnectionLedger.forget()
                 audioCdnRedirectTargets.forgetAll()
@@ -2864,6 +2870,7 @@ class MusicService :
         val nextWindowIndex = player.nextMediaItemIndex
 
         if (nextWindowIndex != C.INDEX_UNSET) {
+            pendingErrorSkipIndex = nextWindowIndex.takeIf { it != player.currentMediaItemIndex }
             player.seekTo(nextWindowIndex, C.TIME_UNSET)
             player.prepare()
             player.play()
@@ -4202,6 +4209,21 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
+        val selectedId = mediaItem?.mediaId
+        val previousSelectionId = lastRecoverySelectionId
+        lastRecoverySelectionId = selectedId
+        val automaticErrorSkip = pendingErrorSkipIndex == player.currentMediaItemIndex
+        pendingErrorSkipIndex = null
+        // An explicit seek to a different item is a new playback attempt.
+        // Source recreation for the SAME item and automatic error traversal
+        // must not refill the budget. Server-access gates remain independent.
+        if (selectedId != null && previousSelectionId != null && selectedId != previousSelectionId &&
+            reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && !automaticErrorSkip) {
+            if (playbackRecoveryCoordinator.onExplicitTrackSelection(selectedId)) {
+                audioBufferStallRefreshes.remove(selectedId)
+                Timber.tag("PlaybackRecovery").i("cdn-recovery reset for explicit track selection id=%s", selectedId)
+            }
+        }
         if (mediaItem?.mediaId != queueSkipBlockedForMediaId) {
             queueSkipBlockedForMediaId = null
         }
@@ -5285,7 +5307,11 @@ class MusicService :
                 // next capture says whether this is ever negotiated without anyone grepping for
                 // it.
                 .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
-                .retryOnConnectionFailure(false)
+                // Direct CDN GETs are idempotent. Restore OkHttp's standard
+                // route recovery (DNS alternatives and stale pooled sockets).
+                // This neither changes a signed URL nor issues a /player call.
+                // HTTP 401/403/429 still reach the existing access policy.
+                .retryOnConnectionFailure(true)
                 // Preserve the per-operation allowance for slow working routes. Failed opens and
                 // reads exit through the bounded fresh-URL recovery path instead of repeating here.
                 // See AUDIO_CDN_TIMEOUT_SECONDS for why the allowance is deliberately generous: a
