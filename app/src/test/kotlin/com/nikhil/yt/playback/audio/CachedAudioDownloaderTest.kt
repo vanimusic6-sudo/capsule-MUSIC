@@ -109,6 +109,21 @@ class CachedAudioDownloaderTest {
         assertFalse("100% must not be published before the cover task is joined", prematurelyCompleted)
     }
 
+    @Test(timeout = 15_000) fun playbackCacheFilledDuringAdmissionNeedsNoNewResolve() = withCaches { source, target ->
+        val bytes = ByteArray(2_000) { 7 }
+        var completed = false
+        val downloader = ResolvingAudioDownloader(
+            "track", target, { error("Do not resolve a track cached during admission") },
+            { error("No network needed") },
+            awaitAdmission = { write(source, "capsule:audio:track:251:2000", bytes) },
+            createCachedDownloader = { createCachedAudioDownloader("track", source, target) },
+        )
+        downloader.download { _, _, percent -> if (percent == 100f) completed = true }
+        assertTrue(completed)
+        assertTrue(AudioCacheIdentity.isComplete(target, "track"))
+        assertEquals(2_000L, target.cacheSpace)
+    }
+
     @Test(timeout = 15_000) fun coverFailureDoesNotInvalidateTheSavedAudio() = withCaches { source, target ->
         write(source, "capsule:audio:track:251:1000", ByteArray(1_000) { 2 })
         var completed = false
