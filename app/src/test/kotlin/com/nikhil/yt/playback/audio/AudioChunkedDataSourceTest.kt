@@ -258,6 +258,59 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun finalRangeAndUnchunkedResponseRetireIdlePoolBeforeNextTrack() {
+        for (size in listOf(64, 192)) {
+            val inner = FakeUpstream(content(size), maxBytesPerRead = 64)
+            var clock = 0L
+            val events = mutableListOf<String>()
+            val upstream = object : DataSource by inner {
+                override fun open(dataSpec: DataSpec): Long {
+                    events += "open:${dataSpec.position}"
+                    return inner.open(dataSpec)
+                }
+                override fun close() { events += "close"; inner.close() }
+            }
+            val source = AudioChunkedDataSource(upstream, chunkBytes = 128,
+                retireIdleConnections = { events += "retire" }, nowMs = { clock })
+            source.open(spec(size.toLong()))
+            assertArrayEquals(content(size), drain(source))
+            clock += 65_000L
+            source.close()
+            assertEquals(listOf("close", "retire"), events.takeLast(2))
+            source.open(spec(size.toLong()))
+            assertEquals("open:0", events.last())
+            source.close()
+            assertEquals(1, events.count { it == "retire" })
+        }
+    }
+
+    @Test
+    fun firstGetResetReconnectsWithoutWaitingForMedia3PeriodTransition() {
+        for (size in listOf(64, 500)) {
+            val bytes = content(size)
+            val inner = FakeUpstream(bytes)
+            var reset = false
+            val upstream = object : DataSource by inner {
+                override fun open(dataSpec: DataSpec): Long {
+                    val length = inner.open(dataSpec)
+                    if (!reset) {
+                        reset = true
+                        throw AudioCdnRefreshRequiredException("abcdefghijk", AudioCdnRefreshReason.OPEN_FAILURE,
+                            java.net.SocketException("Connection reset"))
+                    }
+                    return length
+                }
+            }
+            val source = AudioChunkedDataSource(upstream, chunkBytes = 128, retryTransientOpen = true)
+            try {
+                source.open(spec(size.toLong()))
+                assertArrayEquals(bytes, drain(source))
+                assertEquals(listOf(0L, 0L), inner.opens.take(2).map { it.first })
+            } finally { source.close() }
+        }
+    }
+
+    @Test
     fun resetOpeningContinuationRecoversImmediatelyAtSameOffset() {
         val bytes = content(500)
         val inner = FakeUpstream(bytes)
@@ -273,7 +326,7 @@ class AudioChunkedDataSourceTest {
                 return length
             }
         }
-        val source = AudioChunkedDataSource(upstream, chunkBytes = 128, retryContinuationOpen = true)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128, retryTransientOpen = true)
         try {
             source.open(spec(500))
             assertArrayEquals(bytes, drain(source))
@@ -298,7 +351,7 @@ class AudioChunkedDataSourceTest {
                 }
             }
             val source = AudioChunkedDataSource(upstream, chunkBytes = 128,
-                currentNetworkIdentity = { network }, retryContinuationOpen = true)
+                currentNetworkIdentity = { network }, retryTransientOpen = true)
             try {
                 source.open(spec(500))
                 org.junit.Assert.assertThrows(java.io.IOException::class.java) { drain(source) }

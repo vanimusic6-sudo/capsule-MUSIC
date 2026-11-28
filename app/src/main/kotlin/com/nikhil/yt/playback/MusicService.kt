@@ -5278,10 +5278,10 @@ class MusicService :
                 // exit IP that the signed URL was issued to. Do not perform
                 // the one-shot same-link read retry across that boundary.
                 currentNetworkIdentity = { connectivityManager.activeNetwork?.networkHandle },
-                retryContinuationOpen = true,
+                retryTransientOpen = true,
                 // A response held by Media3 is not idle in OkHttp's pool,
                 // even if its socket has seen no traffic for a minute. Retire
-                // released idle connections before opening the next slice.
+                // released idle connections at every range close, including EOF.
                 retireIdleConnections = {
                     audioCdnConnectionPool.evictAll()
                     Timber.tag("AudioCDN").d("cdn-pool-retire reason=long-range-loader-idle")

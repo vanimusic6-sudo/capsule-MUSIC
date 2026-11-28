@@ -23,8 +23,8 @@ internal open class ProgressiveRangeSource(
     private val readAheadFor: (DataSpec) -> Int = { 0 },
     private val networkIdentity: () -> Long? = { null },
     private val canResume: (IOException, Boolean) -> Boolean,
-    private val canRetryContinuationOpen: (IOException) -> Boolean = { false },
-    private val afterContinuationClose: ((Long) -> Unit)? = null,
+    private val canRetryRangeOpen: (IOException) -> Boolean = { false },
+    private val afterRangeClose: ((Long) -> Unit)? = null,
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) : DataSource {
     private var request: DataSpec? = null
@@ -39,7 +39,7 @@ internal open class ProgressiveRangeSource(
     private var total = UNSET
     private var rangeStart = 0L
     private var resumed = false
-    private var continuationOpenRetried = false
+    private var rangeOpenRetried = false
     // Optional transport lifetime policy. Count loader idle time, not time
     // blocked in a network read. Never start another range just to keep TCP alive.
     private var lastRangeReadAtMs: Long? = null
@@ -72,7 +72,7 @@ internal open class ProgressiveRangeSource(
         plan = selected
         if (selected == null) return openDirect(dataSpec, validate = !windowed)
         val first = slice(selected.firstBytes)
-        upstream.open(first)
+        openRangeWithReconnect(first)
         val range = responseRange()
         if (range == null && selected.requireResponseRange) {
             val host = dataSpec.uri.host.orEmpty()
@@ -88,7 +88,7 @@ internal open class ProgressiveRangeSource(
     }
 
     private fun openDirect(spec: DataSpec, validate: Boolean): Long {
-        val opened = upstream.open(spec)
+        val opened = openRangeWithReconnect(spec)
         if (validate) {
             responseRange()?.let { range ->
                 val expected = if (spec.length == UNSET) range.total - position else spec.length
@@ -101,6 +101,7 @@ internal open class ProgressiveRangeSource(
         }
         if (remaining == UNSET) remaining = opened
         rangeRemaining = remaining
+        beginRangeLease()
         return remaining
     }
 
@@ -147,36 +148,11 @@ internal open class ProgressiveRangeSource(
         if (rangeRemaining == 0L) {
             if (network != networkIdentity()) throw java.net.SocketException("Media network changed")
             val selected = requireNotNull(plan)
-            val idleMs = if (afterContinuationClose != null) {
-                rangeIdleMs + (lastRangeReadAtMs?.let { (nowMs() - it).coerceAtLeast(0L) } ?: 0L)
-            } else 0L
-            upstream.close()
-            // Only now can the just-released HTTP connection be evicted from
-            // the idle pool. An in-use connection is never forcibly closed.
-            afterContinuationClose?.invoke(idleMs)
+            closeRangeLease()
             val next = slice(selected.rate.onChunkComplete())
             resumed = false
             rangeStart = position
-            try {
-                upstream.open(next)
-            } catch (failure: IOException) {
-                // Recover a reset at an already established stream seam NOW,
-                // not after Media3 drains minutes of buffered samples.
-                // One extra open per logical source, never a second retry on
-                // this slice, a fresh URL, or a different network.
-                if (continuationOpenRetried || network != networkIdentity() ||
-                    !canRetryContinuationOpen(failure) || Thread.currentThread().isInterrupted) throw failure
-                continuationOpenRetried = true
-                resumed = true
-                try {
-                    upstream.close()
-                    if (network != networkIdentity() || Thread.currentThread().isInterrupted) throw failure
-                    upstream.open(next)
-                } catch (retry: IOException) {
-                    if (retry !== failure) retry.addSuppressed(failure)
-                    throw retry
-                }
-            }
+            openRangeWithReconnect(next)
             acceptRange(next, responseRange())
             beginRangeLease()
         }
@@ -209,14 +185,47 @@ internal open class ProgressiveRangeSource(
         return count
     }
 
+    // The same bounded transport reconnect is available on the first GET,
+    // a cache-hole open, or a continuation. A failed prefetched period must
+    // not wait for Media3 to make it current before reconnecting.
+    private fun openRangeWithReconnect(spec: DataSpec): Long {
+        try {
+            return upstream.open(spec)
+        } catch (failure: IOException) {
+            if (rangeOpenRetried || network != networkIdentity() ||
+                !canRetryRangeOpen(failure) || Thread.currentThread().isInterrupted) throw failure
+            rangeOpenRetried = true
+            resumed = true
+            try {
+                closeRangeLease()
+                if (network != networkIdentity() || Thread.currentThread().isInterrupted) throw failure
+                return upstream.open(spec)
+            } catch (retry: IOException) {
+                if (retry !== failure) retry.addSuppressed(failure)
+                throw retry
+            }
+        }
+    }
+
+    private fun closeRangeLease() {
+        val last = lastRangeReadAtMs
+        val idleMs = if (last != null) rangeIdleMs + (nowMs() - last).coerceAtLeast(0L) else 0L
+        lastRangeReadAtMs = null
+        rangeIdleMs = 0L
+        upstream.close()
+        // The response has now released its socket. This also runs at the
+        // final range, a direct short response, a seek or cancellation.
+        if (last != null) afterRangeClose?.invoke(idleMs)
+    }
+
     private fun beginRangeLease() {
-        if (afterContinuationClose == null) return
+        if (afterRangeClose == null) return
         lastRangeReadAtMs = nowMs()
         rangeIdleMs = 0L
     }
 
     private fun readNetwork(buffer: ByteArray, offset: Int, length: Int): Int {
-        if (afterContinuationClose != null && plan != null) {
+        if (afterRangeClose != null) {
             lastRangeReadAtMs?.let { rangeIdleMs += (nowMs() - it).coerceAtLeast(0L) }
         }
         val rate = plan?.rate?.takeIf { it.measures(length) }
@@ -230,7 +239,7 @@ internal open class ProgressiveRangeSource(
                 !canResume(failure, position > rangeStart)) throw failure
             resumed = true
             try {
-                upstream.close()
+                closeRangeLease()
                 val rest = slice(rangeRemaining)
                 upstream.open(rest)
                 acceptRange(rest, responseRange())
@@ -241,7 +250,7 @@ internal open class ProgressiveRangeSource(
                 throw retry
             }
         } finally {
-            if (afterContinuationClose != null && plan != null) lastRangeReadAtMs = nowMs()
+            if (afterRangeClose != null && lastRangeReadAtMs != null) lastRangeReadAtMs = nowMs()
         }
     }
 
@@ -282,10 +291,8 @@ internal open class ProgressiveRangeSource(
         aheadOffset = 0
         aheadEnd = 0
         resumed = false
-        continuationOpenRetried = false
-        lastRangeReadAtMs = null
-        rangeIdleMs = 0L
-        upstream.close()
+        rangeOpenRetried = false
+        closeRangeLease()
     }
 
     override fun getUri(): Uri? = upstream.uri

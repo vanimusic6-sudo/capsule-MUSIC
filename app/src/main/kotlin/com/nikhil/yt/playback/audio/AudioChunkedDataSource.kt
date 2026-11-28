@@ -57,7 +57,7 @@ internal class AudioChunkedDataSource(
     chunkBytes: Long = AUDIO_CHUNK_BYTES,
     initialChunkBytes: (DataSpec) -> Long = { 0L },
     currentNetworkIdentity: () -> Long? = { null },
-    retryContinuationOpen: Boolean = false,
+    retryTransientOpen: Boolean = false,
     retireIdleConnections: (() -> Unit)? = null,
     nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) : ProgressiveRangeSource(
@@ -75,12 +75,12 @@ internal class AudioChunkedDataSource(
     canResume = { failure, _ ->
         !failure.isExpectedAudioCdnInterruption() && failure.isTransientAudioCdnSocketReset()
     },
-    afterContinuationClose = retireIdleConnections?.let { retire ->
+    afterRangeClose = retireIdleConnections?.let { retire ->
         { idleMs -> if (idleMs >= AUDIO_CDN_RANGE_IDLE_RETIRE_MS) retire() }
     },
     nowMs = nowMs,
-    canRetryContinuationOpen = { failure ->
-        retryContinuationOpen && failure.isAudioCdnTransportFailure() &&
+    canRetryRangeOpen = { failure ->
+        retryTransientOpen && failure.isAudioCdnTransportFailure() &&
             failure.isTransientAudioCdnSocketReset() &&
             failure.audioAccessStopOrNull() == null &&
             (failure.audioCdnRefreshRequiredOrNull()?.refreshReason.let {
@@ -93,7 +93,7 @@ internal class AudioChunkedDataSource(
         private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
         private val initialChunkBytes: (DataSpec) -> Long = { 0L },
         private val currentNetworkIdentity: () -> Long? = { null },
-        private val retryContinuationOpen: Boolean = false,
+        private val retryTransientOpen: Boolean = false,
         private val retireIdleConnections: (() -> Unit)? = null,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
@@ -102,7 +102,7 @@ internal class AudioChunkedDataSource(
                 chunkBytes,
                 initialChunkBytes,
                 currentNetworkIdentity,
-                retryContinuationOpen,
+                retryTransientOpen,
                 retireIdleConnections,
             )
     }
