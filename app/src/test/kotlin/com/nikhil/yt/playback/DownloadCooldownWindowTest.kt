@@ -40,45 +40,6 @@ class DownloadCooldownWindowTest {
     }
 
     @Test
-    fun existingTrackStopWaitsWithoutShorteningServerCooldown() = runBlocking {
-        var now = 1_000L
-        val access = com.nikhil.yt.playback.audio.AudioAccessDiscipline(nowMs = { now })
-        access.recordTrack("track")
-        access.recordRateLimit("600")
-        awaitDownloadCooldownWindow(
-            nowMs = { now },
-            globalRemainingMs = { access.stopFor("track")?.remainingMs ?: 0L },
-            downloadRemainingMs = { 0L },
-            localCooldownUntilMs = { 0L },
-            sleep = { interval ->
-                assertTrue(access.stopFor("track") != null)
-                now += interval
-            },
-        )
-        assertEquals(601_000L, now)
-        assertEquals(null, access.stopFor("track"))
-    }
-
-    @Test
-    fun existingTrackStopDoesNotFailOrReleaseBeforeItsDeadline() = runBlocking {
-        var now = 1_000L
-        val access = com.nikhil.yt.playback.audio.AudioAccessDiscipline(nowMs = { now })
-        access.recordTrack("track")
-        awaitDownloadCooldownWindow(
-            nowMs = { now },
-            globalRemainingMs = { access.stopFor("track")?.remainingMs ?: 0L },
-            downloadRemainingMs = { 0L },
-            localCooldownUntilMs = { 0L },
-            sleep = { interval ->
-                assertTrue(access.stopFor("track") != null)
-                now += interval
-            },
-        )
-        assertEquals(301_000L, now)
-        assertEquals(null, access.stopFor("track"))
-    }
-
-    @Test
     fun cancellingUserDownloadInterruptsTheWaitImmediately() = runBlocking {
         var calls = 0
         try {

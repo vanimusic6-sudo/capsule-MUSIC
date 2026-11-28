@@ -22,9 +22,6 @@ import androidx.media3.exoplayer.offline.DefaultDownloadIndex
 import androidx.media3.exoplayer.offline.DownloaderFactory
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
-import com.nikhil.yt.playback.audio.AudioAccessGate
-import com.nikhil.yt.playback.audio.AudioAccessStopReason
-import com.nikhil.yt.playback.audio.audioAccessStopOrNull
 import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.createDownloadAudioTransport
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
@@ -186,25 +183,14 @@ constructor(
             CapsuleAudioEngine.downloadCooldownRemainingMs() > 0L ||
             cooldownUntilMs > System.currentTimeMillis()
 
-    private suspend fun awaitDownloadResolveWindow(mediaId: String) {
-        // An explicitly queued download may wait out an existing temporary
-        // access stop. Never clear the stop or send requests during it.
-        AudioAccessGate.discipline.stopFor(mediaId)?.let { stop ->
-            if (stop.reason == AudioAccessStopReason.ACCESS_DENIED || stop.remainingMs <= 0L) throw stop
-            timber.log.Timber.tag("AudioDownload").i(
-                "download-wait id=%s reason=%s remainingMs=%d", mediaId, stop.reason, stop.remainingMs,
-            )
-        }
+    private suspend fun awaitDownloadResolveWindow() {
         // Do not convert a valid 10-minute server 429 cooldown into a permanent
         // Media3 download failure after 30 seconds. The suspended download owns
         // its cancellation; no resolver mutex is held across the wait.
         awaitDownloadCooldownWindow(
             nowMs = System::currentTimeMillis,
-            globalRemainingMs = {
-                val stop = AudioAccessGate.discipline.stopFor(mediaId)
-                if (stop != null && (stop.reason == AudioAccessStopReason.ACCESS_DENIED || stop.remainingMs <= 0L)) throw stop
-                maxOf(CapsulePlaybackSafety.remainingBlockMs(), stop?.remainingMs ?: 0L)
-            },
+            globalRemainingMs = { maxOf(CapsulePlaybackSafety.remainingBlockMs(),
+                com.nikhil.yt.playback.audio.AudioAccessGate.discipline.globalRemainingMs()) },
             downloadRemainingMs = CapsuleAudioEngine::downloadCooldownRemainingMs,
             localCooldownUntilMs = { cooldownUntilMs },
             sliceMs = DOWNLOAD_WAIT_SLICE_MS,
@@ -215,8 +201,8 @@ constructor(
         mediaId: String,
     ): CapsuleAudioEngine.PlaybackData {
         repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
-            AudioAccessGate.check(mediaId)
             if (downloadAdmissionClosed()) throw IOException("Download admission closed while queued")
+            com.nikhil.yt.playback.audio.AudioAccessGate.check(mediaId)
             refreshDownloadNetworkHealth()
             val selection = playbackContext()
             // A signed URL is tied to a YouTube account/visitor as well as
@@ -303,7 +289,7 @@ constructor(
                 // networking. The completed-state listener queues cover repair.
                 saveArtwork = {},
                 resolve = { resolveDownloadPlayback(request.id) },
-                awaitAdmission = { awaitDownloadResolveWindow(request.id) },
+                awaitAdmission = { awaitDownloadResolveWindow() },
                 recover = { playback, failure ->
                     val status = generateSequence(failure as Throwable?) { it.cause }
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
@@ -364,7 +350,6 @@ constructor(
                                             currentNetworkIdentity = {
                                                 connectivityManager.activeNetwork?.networkHandle
                                             },
-                                            retireIdleConnections = { mediaOkHttpClient.connectionPool.evictAll() },
                                         )
                                     })
                                     .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
@@ -490,12 +475,6 @@ constructor(
                             finalException?.javaClass?.simpleName ?: "none",
                         )
                         if (download.state == Download.STATE_FAILED && finalException != null) {
-                            finalException.audioAccessStopOrNull()?.let { stop ->
-                                timber.log.Timber.tag("AudioDownload").w(
-                                    "download-access-stop id=%s reason=%s remainingMs=%d",
-                                    download.request.id, stop.reason, stop.remainingMs,
-                                )
-                            }
                             timber.log.Timber.tag("AudioDownload").w(
                                 "failure id=%s kind=%s causeType=%s",
                                 download.request.id,
