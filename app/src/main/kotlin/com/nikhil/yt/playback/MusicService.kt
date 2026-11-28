@@ -584,7 +584,26 @@ class MusicService :
         clientOrder = audioClientOrder,
         forceSabr = forceSabrAudio,
     )
-    private val playbackUrlCache = PlaybackDataCache(currentContext = ::playbackContext)
+    // Signed media URLs belong to the extraction session and default route,
+    // not only to the selected quality/client order. Keep this snapshot private:
+    // the extraction session may contain credentials and must never be logged.
+    private data class AudioResolutionContext(
+        val selection: AudioPlaybackContext,
+        val session: Any,
+        val networkHandle: Long?,
+        val streamProxy: java.net.Proxy?,
+    ) {
+        override fun toString(): String = "AudioResolutionContext(redacted)"
+    }
+
+    private fun audioResolutionContext() = AudioResolutionContext(
+        selection = playbackContext(),
+        session = com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer.sessionIdentity(),
+        networkHandle = connectivityManager.activeNetwork?.networkHandle,
+        streamProxy = YouTube.streamProxy,
+    )
+
+    private val playbackUrlCache = PlaybackDataCache(currentContext = ::audioResolutionContext)
     private val audioResolveCoordinator =
         AudioResolveCoordinator<CapsuleAudioEngine.PlaybackData>(
             scopeProvider = { ioScope },
@@ -796,14 +815,12 @@ class MusicService :
                     if (loaderDemand || audioResolveCoordinator.hasLoaderDemand(mediaId)) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
                 }
             }
-            val selection = playbackContext()
             val priority = withContext(Dispatchers.Main.immediate) {
                 audioResolvePriority(mediaId)
             }
             // Only the effective order for new resolutions changes. Keep persisted
             // preferences and already-playing signed URLs untouched while the app
             // prewarms Web BotGuard/extractor in the background.
-            val effectiveClientOrder = selection.clientOrder
             if (priority == AudioResolvePriority.PLAYBACK) {
                 while (true) {
                     val waitMs = audioCdnSkipBurstPolicy.resolveDelayMs(mediaId)
@@ -816,6 +833,9 @@ class MusicService :
                 }
                 audioCdnSkipBurstPolicy.onResolveStarted()
             }
+            val resolutionContext = audioResolutionContext()
+            val selection = resolutionContext.selection
+            val effectiveClientOrder = selection.clientOrder
             val startedAt = System.currentTimeMillis()
             Timber.tag(CAPSULE_RESOLVE_TAG).i(
                 "resolve start id=%s",
@@ -832,7 +852,8 @@ class MusicService :
                     forceSabr = selection.forceSabr,
                 )
                 .also { result ->
-                    if (selection != playbackContext()) {
+                    if (result.isSuccess && resolutionContext != audioResolutionContext()) {
+                        Timber.tag(CAPSULE_RESOLVE_TAG).i("resolve-context-changed id=%s; discarding stale success", mediaId)
                         throw kotlinx.coroutines.CancellationException("Playback context changed")
                     }
                     // A /player request that was already on the wire when selection changed
@@ -851,7 +872,7 @@ class MusicService :
                             mediaId = mediaId,
                             playback = it,
                             generation = policyGeneration,
-                            selection = selection,
+                            resolutionContext = resolutionContext,
                             priority = priority,
                         )
                     }
@@ -1701,9 +1722,21 @@ class MusicService :
     }
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
+        val defaultProxySelector = java.net.ProxySelector.getDefault()
         OkHttpClient
             .Builder()
-            .proxy(YouTube.streamProxy)
+            // Do not pin the first proxy preference for the service lifetime.
+            // Respect the existing user-selected stream route on each new call.
+            .proxySelector(object : java.net.ProxySelector() {
+                override fun select(uri: java.net.URI): List<java.net.Proxy> {
+                    YouTube.streamProxy?.let { return listOf(it) }
+                    return defaultProxySelector?.select(uri)?.takeIf { it.isNotEmpty() }
+                        ?: listOf(java.net.Proxy.NO_PROXY)
+                }
+                override fun connectFailed(uri: java.net.URI, sa: java.net.SocketAddress, ioe: java.io.IOException) {
+                    defaultProxySelector?.connectFailed(uri, sa, ioe)
+                }
+            })
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
@@ -5538,6 +5571,18 @@ class MusicService :
         val uri = if (sabr != null) {
             android.net.Uri.parse("$CAPSULE_AUDIO_SABR_SCHEME://audio/${sabr.videoId}")
         } else playback.streamUrl.toUri()
+        // Correlate the extractor's exact link with the existing salted wire
+        // diagnostics. Never export a signed URL, token or proxy address.
+        if (GlobalLog.isEnabled && sabr == null) {
+            Timber.tag("AudioCDN").d(
+                "resolve-contract id=%s linkRef=%s source=%s metadataProxy=%s streamProxy=%s",
+                mediaId,
+                com.nikhil.yt.playback.audio.AudioCdnLinkIdentity.ref(playback.streamUrl),
+                source,
+                YouTube.proxy?.type()?.name ?: "SYSTEM",
+                YouTube.streamProxy?.type()?.name ?: "SYSTEM",
+            )
+        }
         val openContext: Any = if (sabr != null) {
             CapsuleSabrAudioOpenContext(sabr)
         } else {
@@ -5561,7 +5606,7 @@ class MusicService :
         mediaId: String,
         playback: CapsuleAudioEngine.PlaybackData,
         generation: Long,
-        selection: AudioPlaybackContext,
+        resolutionContext: AudioResolutionContext,
         priority: AudioResolvePriority,
     ) {
         val format = playback.format
@@ -5598,11 +5643,14 @@ class MusicService :
         val resolveContext = currentCoroutineContext()
         audioResolveCoordinator.publishIfCurrent(generation) {
             resolveContext.ensureActive()
+            if (resolutionContext != audioResolutionContext()) {
+                throw kotlinx.coroutines.CancellationException("Playback context changed before URL publication")
+            }
             publishResolvedLoudness(mediaId, loudness)
             playbackUrlCache.put(
                 mediaId = mediaId,
                 data = playback,
-                context = selection,
+                context = resolutionContext,
             )
         }
     }

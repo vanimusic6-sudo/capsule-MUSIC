@@ -93,6 +93,24 @@ class PlaybackDataCacheTest {
         assertNotNull(cache.get("track"))
     }
 
+    @Test fun musicServiceUsesSessionAndRouteForItsUrlCache() {
+        val relative = "src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"
+        val source = listOf(java.io.File(relative), java.io.File("app/$relative"))
+            .first { it.isFile }.readText()
+        val context = source.substringAfter("private fun audioResolutionContext()")
+            .substringBefore("private val playbackUrlCache")
+        assertTrue(context.contains("sessionIdentity()"))
+        assertTrue(context.contains("activeNetwork?.networkHandle"))
+        assertTrue(context.contains("YouTube.streamProxy"))
+        assertTrue(source.contains("PlaybackDataCache(currentContext = ::audioResolutionContext)"))
+        assertTrue(source.contains("context = resolutionContext"))
+        assertTrue(source.contains("resolutionContext != audioResolutionContext()"))
+        val client = source.substringAfter("private val mediaOkHttpClient:")
+            .substringBefore("@Inject lateinit var downloadUtil")
+        assertTrue(client.contains("override fun select(uri: java.net.URI)"))
+        assertFalse(client.contains(".proxy(YouTube.streamProxy)"))
+    }
+
     @Test fun stalePrefetchedGenerationIsDroppedBeforePlayback() {
         var now = 0L
         val cache = PlaybackDataCache(nowMs = { now })
