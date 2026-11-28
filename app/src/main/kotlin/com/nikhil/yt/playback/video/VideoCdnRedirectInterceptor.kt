@@ -82,6 +82,20 @@ internal class VideoCdnRedirectInterceptor(
                 return@repeat
             }
             if (response.code !in setOf(301, 302, 303, 307, 308)) {
+                // Report the real responding hop, not just the original URL.
+                // Log only header presence and salted references, never tokens,
+                // URLs, addresses, cookies, or arbitrary response bodies.
+                if (com.nikhil.yt.utils.GlobalLog.isEnabled && response.code >= 400) {
+                    Timber.tag("CapsuleVideo").w(
+                        "video-cdn-verdict originRef=%s effectiveRef=%s host=%s status=%d protocol=%s range=%s ua=%s origin=%s referer=%s challenge=%s",
+                        com.nikhil.yt.playback.audio.AudioCdnLinkIdentity.ref(origin.url.toString()),
+                        com.nikhil.yt.playback.audio.AudioCdnLinkIdentity.ref(current.url.toString()),
+                        current.url.host, response.code, response.protocol.toString(),
+                        current.header("Range") != null, current.header("User-Agent") != null,
+                        current.header("Origin") != null, current.header("Referer") != null,
+                        response.header("WWW-Authenticate") != null,
+                    )
+                }
                 if (response.code == 206 && response.header("Content-Range") != null &&
                     networkIdentity() == network) memory.remember(network, origin.url, current.url)
                 if (response.code == 403 || response.code == 410) VideoRejectedLinks.reject(current.url.toString())

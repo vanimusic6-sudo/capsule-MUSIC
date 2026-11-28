@@ -170,6 +170,17 @@ internal fun capsuleVideoInitialPosition(
     return (position + prediction).coerceAtMost(duration - 3_000L)
 }
 
+/** Indexed DASH exposes a ladder of independent signed files rather than
+ * a single segment timeline. A fixed supported representation prevents
+ * startup bitrate changes from opening a third initialization range.
+ * HLS keeps its adaptive selector. Never change selection in response to a refusal. */
+internal fun videoTrackSelectionParameters(
+    current: androidx.media3.common.TrackSelectionParameters,
+    delivery: CapsuleVideoDelivery?,
+): androidx.media3.common.TrackSelectionParameters = current.buildUpon()
+    .setForceHighestSupportedBitrate(delivery == CapsuleVideoDelivery.DASH)
+    .build()
+
 internal class CapsuleVideoCompanion(
     context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
     readStudioSound: () -> CapsuleStudioSound,
@@ -197,8 +208,7 @@ internal class CapsuleVideoCompanion(
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.
         .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
         .setMediaSourceFactory(factory)
-        // Let VIDEO adapt to actual VIDEO CDN throughput instead of forcing
-        // the highest supported bitrate on slow first-byte connections.
+        // HLS stays adaptive; indexed DASH is configured per session below.
         .setTrackSelector(DefaultTrackSelector(context))
         .setLoadControl(DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -262,6 +272,7 @@ internal class CapsuleVideoCompanion(
         idleExpiry?.cancel(); idleExpiry = null
         frameRetention.clear()
         val delivery = (item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo)?.delivery
+        player.trackSelectionParameters = videoTrackSelectionParameters(player.trackSelectionParameters, delivery)
         session.start(id, item, volume, startupBudgetMs = if (delivery == CapsuleVideoDelivery.PROGRESSIVE) 8_000L else 15_000L)
     }
     fun setForeground(value: Boolean) = session.setForeground(value)

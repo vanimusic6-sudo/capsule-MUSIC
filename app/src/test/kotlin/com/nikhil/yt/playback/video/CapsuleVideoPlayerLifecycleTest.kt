@@ -24,6 +24,14 @@ class CapsuleVideoPlayerLifecycleTest {
         assertEquals("OK", player.getJSONObject("playabilityStatus").getString("status"))
         assertEquals("abcdefghijk", player.getJSONObject("videoDetails").getString("videoId"))
     }
+    @Test fun indexedDashUsesOneSupportedBitrateWhileHlsKeepsAdaptation() {
+        val initial = androidx.media3.common.TrackSelectionParameters.Builder(RuntimeEnvironment.getApplication()).build()
+        val dash = videoTrackSelectionParameters(initial, com.nikhil.yt.innertube.video.CapsuleVideoDelivery.DASH)
+        org.junit.Assert.assertTrue(dash.forceHighestSupportedBitrate)
+        val hls = videoTrackSelectionParameters(dash, com.nikhil.yt.innertube.video.CapsuleVideoDelivery.HLS)
+        org.junit.Assert.assertFalse(hls.forceHighestSupportedBitrate)
+        org.junit.Assert.assertFalse(videoTrackSelectionParameters(dash, null).forceHighestSupportedBitrate)
+    }
     @Test fun actualVideoCompanionConstructsStopsAndReleasesWithMedia3() = runTest {
         val context = RuntimeEnvironment.getApplication()
         val music = ExoPlayer.Builder(context).build()
