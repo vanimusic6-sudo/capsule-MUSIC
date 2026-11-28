@@ -5296,6 +5296,9 @@ class MusicService :
                 // A pool of this app's own, because the shared default outlives what googlevideo
                 // keeps a socket open for. See AUDIO_CDN_IDLE_CONNECTION_SECONDS.
                 .connectionPool(audioCdnConnectionPool)
+                .eventListenerFactory { call ->
+                    com.nikhil.yt.playback.audio.AudioCdnConnectDiagnostics.forCall(call)
+                }
                 // Redirects are followed by AudioCdnRedirectInterceptor instead, which declines
                 // the ones that would carry a signed link out of the group that issued it. In the
                 // capture that found this, every failed open was on the hop after a redirect;
